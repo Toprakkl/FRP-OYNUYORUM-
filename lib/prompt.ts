@@ -1,0 +1,111 @@
+import { formatDice, suggestedDc } from "./dice";
+import { clip, formatWorldTime } from "./format";
+import { selectLore } from "./lore";
+import { GENRE_LABEL, SLOT_LABEL, STAT_LABEL, type DiceResolved, type Game } from "./types";
+
+function adultAllowed(game: Game): boolean {
+  if (!game.settings.adult || !game.settings.adultConfirmed) return false;
+  if (game.character.age > 0 && game.character.age < 18) return false;
+  return true;
+}
+
+export function buildSystemPrompt(game: Game): string {
+  const settings = game.settings;
+  const genre = settings.genre === "ozel" && settings.customGenre.trim() ? settings.customGenre.trim() : GENRE_LABEL[settings.genre];
+  const tone =
+    settings.tone === "kisa"
+      ? "İki ya da üç kısa cümle yaz. Betimlemeyi kes."
+      : settings.tone === "detayli"
+        ? "İki ya da üç kısa paragraf yaz. Duyu kur, nutuk atma."
+        : "Bir ya da iki kısa paragraf yaz.";
+  const difficulty =
+    settings.difficulty === "kolay"
+      ? "Başarısızlık can yakmasın. Ölüm yazma. Kısmi başarıyı tercih et."
+      : settings.difficulty === "sert"
+        ? "Adil ama merhametsiz ol. Kalıcı yara ve ölüm mümkün. Yine de her turda öldürme."
+        : "Adil ol. Bayılma olabilir. Kalıcı ölüm yazma.";
+  const adult = adultAllowed(game)
+    ? "Yetişkin içerik açık. Karanlık tema, sert şiddet, küfür ve yetişkinler arası duygusal ya da cinsel içerik serbest. Rıza dışı cinsel şiddeti erotikleştirme; o noktada sahneyi kes."
+    : "Yetişkin içerik kapalı. Şiddeti kısa kes. İşkence, cinsel içerik ve küfür yazma.";
+  const minor = game.character.age > 0 && game.character.age < 18 ? "Oyuncu karakteri reşit değil." : "";
+
+  return [
+    "Sen tek oyunculu bir FRP masasının oyun yöneticisisin. Anlatım Türkçe.",
+    "Oyuncu tek karakteri oynar. Onun yerine karar verme, onun ağzından uzun konuşma yazma, görmediği bilgiyi ona söyletme.",
+    "Anlatım ikinci tekil şahıs olsun. Düz yazı yaz. Madde işareti, yıldız ve başlık kullanma.",
+    `Tür: ${genre}. Para birimi: ${settings.currency}.`,
+    settings.magic
+      ? "Büyü var. Mana, büyü ve büyülü eşya kullanılabilir."
+      : "Büyü yok. Mana, büyü, büyülü eşya, kehanet ve doğaüstü güç yazma.",
+    `Zorluk: ${settings.difficulty}. Önerilen DC ${suggestedDc(settings.difficulty)}. ${difficulty}`,
+    `Ton: ${tone}`,
+    settings.realism
+      ? "Gerçekçilik açık: yorgunluk, açlık, yük ve zaman ara sıra hissedilsin. Her turda hatırlatma."
+      : "Gerçekçilik kapalı: açlık ve yük takibi yapma.",
+    adult,
+    minor,
+    "Yaş sınırı her zaman geçerlidir: 18 yaşından küçük hiç kimse için cinsel ya da romantik içerik üretme.",
+    settings.customRules.trim() ? `Ev kuralları: ${settings.customRules.trim()}` : "",
+    "Zarı sen atmazsın. Sana doğal zar, varsa stat bonusu, toplam ve DC verilir. Toplam DC'den küçükse başarısızlık ya da kısmi başarı yaz. Doğal 1 belirgin bir komplikasyondur. Doğal 20 belirgin bir avantajdır. Toplamı değiştirme.",
+    "Zar yoksa: risksiz hareketi çöz. Risk, çatışma ya da belirsizlik varsa sonucu uydurma. Sahneyi kur ve oyuncudan ilgili statla zar atmasını iste. O turda commands boş kalsın.",
+    "Hasar ayrı zar değildir. Yarayı HP komutuyla işle: çizik -1 ile -3, yara -4 ile -8, ağır yara -9 ile -16, neredeyse öldürücü -17 ile -30. İyileşme de bu ölçüde olsun.",
+    "Durum yalnızca commands ile değişir. Anlatıda olan ama komutu olmayan hiçbir şey karakter kağıdına işlenmez.",
+    "Bir turda 0 ile 4 komut yeter. Haksız eşya, para ve XP yağdırma. XP çoğu turda 0, gerçek bir risk çözülünce 5 ile 20.",
+    "Yeni eşya item_add, kayıp eşya item_remove, kuşanma item_equip. Görev, kişi, konum ve saat için ayrı komut kullan.",
+    "Görünürlüğü ai_only olan notlar sırdır. Kurgu içinde keşfedilmeden açıkça söyleme.",
+    'Yalnızca JSON döndür: {"narrative":"...","commands":[...]}. narrative boş olmasın.',
+    "Komut örnekleri: {\"type\":\"hp\",\"delta\":-4} {\"type\":\"condition_add\",\"name\":\"yaralı kol\"} {\"type\":\"time\",\"delta_hours\":1} {\"type\":\"gold\",\"delta\":8} {\"type\":\"xp\",\"delta\":10} {\"type\":\"item_add\",\"name\":\"Paslı anahtar\",\"itemType\":\"key\",\"description\":\"Soğuk\"} {\"type\":\"location_set\",\"name\":\"Kiler\"} {\"type\":\"quest_update\",\"title\":\"Açılmamış mektup\",\"objective_done\":\"Mektubun kime ait olduğunu öğren\"} {\"type\":\"npc_touch\",\"name\":\"Maren\",\"delta\":5} {\"type\":\"journal_add\",\"text\":\"Mühür kırıldı.\"}",
+    "set_hp, set_level ve level_up gönderme. Seviye XP ile yükselir. Ölü bir karakteri diriltme.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildUserPrompt(game: Game, message: string, dice: DiceResolved | null): string {
+  const character = game.character;
+  const state = {
+    zaman: formatWorldTime(game.worldTime),
+    konum: game.location,
+    hayatta: character.isAlive,
+    karakter: {
+      ad: character.name,
+      sinif: character.className,
+      tur: character.race,
+      yas: character.age,
+      seviye: character.level,
+      xp: `${character.xp}/${character.level * 100}`,
+      can: `${character.hp}/${character.maxHp}`,
+      mana: game.settings.magic ? `${character.mana}/${character.maxMana}` : "yok",
+      para: `${character.gold} ${game.settings.currency}`,
+      zirh: character.ac,
+      stat: character.stats,
+      durum: character.conditions,
+      beceriler: character.skills,
+      buyuler: game.settings.magic ? character.spells : [],
+      gorunum: clip(character.appearance, 300),
+      kisilik: clip(character.personality, 240),
+      gecmis: clip(character.backstory, 500),
+      itibar: character.reputation,
+    },
+    kusanim: game.inventory
+      .filter((item) => item.equippedSlot)
+      .map((item) => `${item.name} (${item.equippedSlot ? SLOT_LABEL[item.equippedSlot] : ""}${item.props.damage ? `, ${item.props.damage}` : ""}${item.props.ac ? `, AC +${item.props.ac}` : ""})`),
+    envanter: game.inventory.map((item) => `${item.name} ×${item.qty}${item.magical ? " [büyülü]" : ""}`),
+    gorevler: game.quests.filter((quest) => quest.status === "active"),
+    kisiler: game.npcs.map((npc) => ({ ad: npc.name, tutum: npc.attitude, durum: npc.status, yer: npc.location, not: clip(npc.notes, 180) })),
+    ozet: game.summary || "(henüz yok)",
+    dunya: selectLore(game, message),
+    son: game.messages
+      .filter((entry) => entry.role !== "system")
+      .slice(-14)
+      .map((entry) => ({
+        kim: entry.role === "player" ? "oyuncu" : "hakem",
+        zar: entry.dice ? formatDice(entry.dice) : undefined,
+        metin: clip(entry.content, 900),
+      })),
+  };
+  const diceLine = dice
+    ? `ZAR: doğal ${dice.natural}, stat ${dice.stat ? STAT_LABEL[dice.stat] : "seçilmedi"}, bonus ${dice.modifier}, toplam ${dice.total}, DC ${dice.dc}.`
+    : "ZAR YOK.";
+  return ["GÜNCEL DURUM", JSON.stringify(state), "", diceLine, "", `OYUNCU: ${message}`].join("\n");
+}
