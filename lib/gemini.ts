@@ -47,6 +47,7 @@ const SCHEMA = {
     check_stat: { type: Type.STRING },
     check_dc: { type: Type.NUMBER },
     check_reason: { type: Type.STRING },
+    check_skill: { type: Type.STRING },
   },
   required: ["narrative", "commands"],
 };
@@ -134,7 +135,8 @@ export async function askGameMaster(options: {
         continue;
       }
       const payload = readAiPayload(text);
-      const check = allowCheck ? parseCheck(payload.checkStat, payload.checkDc, payload.checkReason, options.game.settings.difficulty) : null;
+      const scale = options.game.settings.genre === "veyra" ? "veyra" : "classic";
+      const check = allowCheck ? parseCheck(payload.checkStat, payload.checkDc, payload.checkReason, options.game.settings.difficulty, scale, payload.checkSkill) : null;
       if (check) return { narrative: "", commands: [], blocked: false, check };
       if (!payload.narrative) {
         lastError = "Anlatı boş";
@@ -154,7 +156,7 @@ export async function askGameMaster(options: {
       }
       if (/JSON|Anlatı boş|nesne değil/i.test(message)) {
         lastError = message;
-        hint = "\n\nÖnceki çıktın geçersizdi. Yalnızca {\"narrative\":\"...\",\"commands\":[],\"check_stat\":\"\",\"check_dc\":0,\"check_reason\":\"\"} biçiminde JSON döndür.";
+        hint = "\n\nÖnceki çıktın geçersizdi. Yalnızca {\"narrative\":\"...\",\"commands\":[],\"check_stat\":\"\",\"check_dc\":0,\"check_reason\":\"\",\"check_skill\":\"\"} biçiminde JSON döndür.";
         continue;
       }
       throw err;

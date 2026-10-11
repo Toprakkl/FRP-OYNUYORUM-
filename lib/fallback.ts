@@ -1,6 +1,7 @@
 import { localCheck } from "./checks";
 import type { Command } from "./commands";
 import { resolveDice, rollD20 } from "./dice";
+import { raceByName, withSkillBonus } from "./veyra";
 import type { DiceResolved, Game } from "./types";
 
 function hash(seed: string): number {
@@ -96,12 +97,15 @@ export function fallbackTurn(game: Game, message: string, dice: DiceResolved | n
 }
 
 export function playLocalTurn(game: Game, message: string, fixedNatural?: number): { narrative: string; commands: Command[]; dice: DiceResolved | null } {
-  const check = localCheck(message, game.settings.difficulty);
+  const scale = game.settings.genre === "veyra" ? "veyra" : "classic";
+  const check = localCheck(message, game.settings.difficulty, scale);
   if (!check) {
     const quiet = fallbackTurn(game, message, null);
     return { ...quiet, dice: null };
   }
-  const dice = resolveDice(fixedNatural ?? rollD20(), check.stat, game.character.stats, game.settings.difficulty, check.dc);
+  let natural = fixedNatural ?? rollD20();
+  if (game.settings.genre === "veyra" && fixedNatural === undefined && natural === 1 && raceByName(game.character.race)?.luck) natural = rollD20();
+  const dice = withSkillBonus(resolveDice(natural, check.stat, game.character.stats, game.settings.difficulty, check.dc), game, check.skill);
   dice.reason = check.reason;
   const turn = fallbackTurn(game, message, dice);
   return { ...turn, dice };

@@ -145,16 +145,28 @@ export type Character = {
   spells: string[];
   notes: string;
   reputation: Record<string, number>;
+  honor: number;
+  talentPoints: number;
+  talents: string[];
+  peakGifts: number;
+  guildPoints: number;
+  guildRank: string;
+  origin: string;
+  oath: string;
+  traits: string;
+  lastStand: boolean;
+  naturalArmor: boolean;
   portraitDataUrl?: string;
   isAlive: boolean;
 };
 
-export type GenreId = "orta_cag" | "istihbarat" | "distopya" | "bilimkurgu" | "ozel";
-export type ThemeId = "orta_cag" | "istihbarat" | "distopya" | "bilimkurgu";
+export type GenreId = "veyra" | "orta_cag" | "istihbarat" | "distopya" | "bilimkurgu" | "ozel";
+export type ThemeId = "veyra" | "orta_cag" | "istihbarat" | "distopya" | "bilimkurgu";
 export type Difficulty = "kolay" | "normal" | "sert";
 export type Tone = "kisa" | "normal" | "detayli";
 
 export const GENRE_LABEL: Record<GenreId, string> = {
+  veyra: "VEYRA: DOĞUŞ",
   orta_cag: "Orta Çağ",
   istihbarat: "Modern istihbarat",
   distopya: "Distopya",
@@ -163,6 +175,7 @@ export const GENRE_LABEL: Record<GenreId, string> = {
 };
 
 export const THEME_LABEL: Record<ThemeId, string> = {
+  veyra: "Kızıl Yıldız",
   orta_cag: "Parşömen",
   istihbarat: "Gece vardiyası",
   distopya: "Pas",

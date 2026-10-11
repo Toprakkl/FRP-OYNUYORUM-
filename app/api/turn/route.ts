@@ -4,6 +4,7 @@ import { fallbackTurn, playLocalTurn } from "@/lib/fallback";
 import { askGameMaster, humanizeGeminiError } from "@/lib/gemini";
 import { cleanModel, coerceGame } from "@/lib/storage";
 import type { Game } from "@/lib/types";
+import { raceByName, withSkillBonus } from "@/lib/veyra";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -48,7 +49,9 @@ export async function POST(request: Request) {
         blocked: first.blocked,
       });
     }
-    const dice = resolveDice(rollD20(), first.check.stat, game.character.stats, game.settings.difficulty, first.check.dc);
+    let natural = rollD20();
+    if (game.settings.genre === "veyra" && natural === 1 && raceByName(game.character.race)?.luck) natural = rollD20();
+    const dice = withSkillBonus(resolveDice(natural, first.check.stat, game.character.stats, game.settings.difficulty, first.check.dc), game, first.check.skill);
     dice.reason = first.check.reason;
     try {
       const second = await askGameMaster({ apiKey, model, game, message: parsed.data.message, dice, allowCheck: false });

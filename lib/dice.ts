@@ -4,7 +4,12 @@ export function modifier(score: number): number {
   return Math.floor((score - 10) / 2);
 }
 
-export function suggestedDc(difficulty: Difficulty): number {
+export function suggestedDc(difficulty: Difficulty, scale: "classic" | "veyra" = "classic"): number {
+  if (scale === "veyra") {
+    if (difficulty === "kolay") return 8;
+    if (difficulty === "sert") return 15;
+    return 12;
+  }
   if (difficulty === "kolay") return 11;
   if (difficulty === "sert") return 17;
   return 14;

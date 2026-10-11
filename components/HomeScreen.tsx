@@ -32,7 +32,7 @@ export function HomeScreen() {
       </div>
       {error ? <div className="toast">{error} <button onClick={clearError}>Kapat</button></div> : null}
       <div className="stack" style={{ marginTop: 18 }}>
-        {ordered.length === 0 ? <p className="faint">Henüz masa yok. Külkapı'da bir han kapısı seni bekliyor.</p> : null}
+        {ordered.length === 0 ? <p className="faint">Henüz masa yok. VEYRA: DOĞUŞ ya da Külkapı seni bekliyor.</p> : null}
         {ordered.map((game) => (
           <article className="card" key={game.id}>
             <h2>{game.title}</h2>

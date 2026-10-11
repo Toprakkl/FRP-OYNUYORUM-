@@ -5,6 +5,7 @@ import { clamp, sameName, signed } from "./format";
 import { now, uid } from "./ids";
 import type { Character, Game, Item } from "./types";
 import { SLOTS } from "./types";
+import { essenceMax, findNode, levelCap, nextGuildRank, pathByName, raceByName, rankCap, statCap, unlockPlan } from "./veyra";
 
 export type ApplyResult = {
   game: Game;
@@ -41,7 +42,7 @@ export function carryCapacity(strength: number): number {
 
 export function computeAc(character: Character, items: Item[]): number {
   const bonus = items.reduce((sum, item) => sum + (item.equippedSlot ? item.props.ac ?? 0 : 0), 0);
-  return 10 + modifier(character.stats.dex) + bonus;
+  return 10 + modifier(character.stats.dex) + bonus + (character.naturalArmor ? 1 : 0);
 }
 
 function findItem(items: Item[], name: string, id?: string): Item | undefined {
@@ -86,7 +87,11 @@ function writeHp(game: Game, target: number, source: Source, mode: "delta" | "se
   let value = clamp(Math.round(target), 0, character.maxHp);
   const summaries: string[] = [];
   const lethal = value <= 0;
-  if (lethal && (mode === "delta" || source === "ai" || source === "system")) {
+  if (lethal && character.lastStand) {
+    value = 1;
+    character.lastStand = false;
+    summaries.push("Son nefes");
+  } else if (lethal && (mode === "delta" || source === "ai" || source === "system")) {
     if (game.settings.difficulty === "kolay") {
       value = Math.min(1, character.maxHp);
       if (pushCondition(character, "sendeleyen")) summaries.push("Sendeledin");
@@ -112,8 +117,31 @@ function writeHp(game: Game, target: number, source: Source, mode: "delta" | "se
   return summaries;
 }
 
+function syncEssence(game: Game): number {
+  if (game.settings.genre !== "veyra" || !game.settings.magic) return 0;
+  const path = pathByName(game.character.className);
+  if (!path) return 0;
+  const next = essenceMax(path, game.character.level, game.character.stats, raceByName(game.character.race));
+  const delta = next - game.character.maxMana;
+  game.character.maxMana = next;
+  game.character.mana = clamp(game.character.mana + Math.max(0, delta), 0, next);
+  return delta;
+}
+
 function grantLevel(game: Game): string {
   const character = game.character;
+  if (game.settings.genre === "veyra") {
+    const path = pathByName(character.className);
+    const gain = Math.max(1, (path?.average ?? 5) + modifier(character.stats.con));
+    character.level += 1;
+    character.maxHp += gain;
+    character.hp = Math.min(character.maxHp, character.hp + gain);
+    character.talentPoints += 2;
+    if (character.level % 5 === 0) character.statPoints += 1;
+    if (character.level % 10 === 0) character.peakGifts += 1;
+    syncEssence(game);
+    return `Seviye ${character.level}`;
+  }
   character.level += 1;
   character.maxHp += 4;
   character.hp = Math.min(character.maxHp, character.hp + 4);
@@ -128,7 +156,8 @@ function grantLevel(game: Game): string {
 function drainLevels(game: Game): string[] {
   const summaries: string[] = [];
   let guard = 0;
-  while (game.character.xp >= game.character.level * 100 && game.character.level < 20 && guard < 8) {
+  const cap = levelCap(game.settings.genre);
+  while (game.character.xp >= game.character.level * 100 && game.character.level < cap && guard < 12) {
     game.character.xp -= game.character.level * 100;
     summaries.push(grantLevel(game));
     guard += 1;
@@ -155,7 +184,7 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
     case "set_max_hp": {
       const before = character.maxHp;
       const next = command.type === "max_hp" ? character.maxHp + command.delta : command.value;
-      character.maxHp = clamp(next, 1, 999);
+      character.maxHp = clamp(next, 1, game.settings.genre === "veyra" ? 9999 : 999);
       if (character.hp > character.maxHp) character.hp = character.maxHp;
       if (character.maxHp === before) return { summaries: [] };
       return { summaries: [`Azami can ${signed(character.maxHp - before)}`] };
@@ -167,15 +196,15 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
       const next = command.type === "mana" ? character.mana + command.delta : command.value;
       character.mana = clamp(next, 0, character.maxMana);
       if (character.mana === before) return { summaries: [] };
-      return { summaries: [`Mana ${signed(character.mana - before)}`] };
+      return { summaries: [`${game.settings.genre === "veyra" ? "Öz" : "Mana"} ${signed(character.mana - before)}`] };
     }
     case "set_max_mana": {
       if (!game.settings.magic && source === "ai") return { summaries: [], error: "Büyü kapalı" };
       const before = character.maxMana;
-      character.maxMana = clamp(command.value, 0, 999);
+      character.maxMana = clamp(command.value, 0, game.settings.genre === "veyra" ? 9999 : 999);
       character.mana = Math.min(character.mana, character.maxMana);
       if (character.maxMana === before) return { summaries: [] };
-      return { summaries: [`Azami mana ${signed(character.maxMana - before)}`] };
+      return { summaries: [`Azami ${game.settings.genre === "veyra" ? "Öz" : "mana"} ${signed(character.maxMana - before)}`] };
     }
     case "gold":
     case "set_gold": {
@@ -201,27 +230,32 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
     }
     case "set_level": {
       const before = character.level;
-      const value = clamp(command.value, 1, 20);
+      const value = clamp(command.value, 1, levelCap(game.settings.genre));
       if (value === before) return { summaries: [] };
-      if (value > before) character.statPoints += value - before;
+      if (value > before && game.settings.genre !== "veyra") character.statPoints += value - before;
       character.level = value;
+      if (game.settings.genre === "veyra") syncEssence(game);
       return { summaries: [`Seviye ${value}`] };
     }
     case "stat": {
       const before = character.stats[command.stat];
-      const value = clamp(before + command.delta, 1, source === "ai" ? 20 : 24);
+      const ceiling = game.settings.genre === "veyra" ? statCap(character.level) : source === "ai" ? 20 : 24;
+      const value = clamp(before + command.delta, 1, ceiling);
       if (value === before) return { summaries: [] };
       if (source !== "ai" && value > before && character.statPoints > 0) {
         character.statPoints = Math.max(0, character.statPoints - (value - before));
       }
       character.stats[command.stat] = value;
+      if (game.settings.genre === "veyra") syncEssence(game);
       return { summaries: [`${command.stat.toUpperCase()} ${signed(value - before)}`] };
     }
     case "set_stat": {
       const before = character.stats[command.stat];
-      character.stats[command.stat] = command.value;
+      const ceiling = game.settings.genre === "veyra" ? statCap(character.level) : 30;
+      character.stats[command.stat] = clamp(command.value, 1, ceiling);
       if (character.stats[command.stat] === before) return { summaries: [] };
-      return { summaries: [`${command.stat.toUpperCase()} ${command.value}`] };
+      if (game.settings.genre === "veyra") syncEssence(game);
+      return { summaries: [`${command.stat.toUpperCase()} ${character.stats[command.stat]}`] };
     }
     case "time":
     case "set_time": {
@@ -296,19 +330,26 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
     }
     case "skill_add": {
       const existing = character.skills.find((skill) => sameName(skill.name, command.name));
+      const next = game.settings.genre === "veyra" ? Math.min(command.level, rankCap(character.level)) : command.level;
+      if (game.settings.genre === "veyra" && source !== "ai") {
+        const prev = existing?.level ?? 0;
+        if (next !== prev + 1) return { summaries: [], error: "Rütbe birer birer artar" };
+        if (character.talentPoints < next) return { summaries: [], error: "Yetenek puanı yetmiyor" };
+        character.talentPoints -= next;
+      }
       if (existing) {
-        if (existing.level >= command.level) return { summaries: [] };
-        existing.level = command.level;
+        if (existing.level >= next) return { summaries: [] };
+        existing.level = next;
       } else {
-        if (character.skills.length >= 16) return { summaries: [], error: "Beceri listesi dolu" };
-        character.skills.push({ name: command.name, level: command.level });
+        if (character.skills.length >= 24) return { summaries: [], error: "Beceri listesi dolu" };
+        character.skills.push({ name: command.name, level: next });
       }
       return { summaries: [`Beceri: ${command.name}`] };
     }
     case "spell_learn": {
       if (!game.settings.magic) return { summaries: [], error: "Büyü kapalı" };
       if (character.spells.some((spell) => sameName(spell, command.name))) return { summaries: [] };
-      if (character.spells.length >= 16) return { summaries: [], error: "Büyü listesi dolu" };
+      if (character.spells.length >= 32) return { summaries: [], error: "Büyü listesi dolu" };
       character.spells.push(command.name);
       return { summaries: [`Büyü: ${command.name}`] };
     }
@@ -382,6 +423,42 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
       if (next === before) return { summaries: [] };
       character.reputation[command.faction] = next;
       return { summaries: [`İtibar ${command.faction} ${signed(next - before)}`] };
+    }
+    case "honor": {
+      if (game.settings.genre !== "veyra") return { summaries: [], error: "Onur yalnız Veyra'da" };
+      const before = character.honor;
+      character.honor = clamp(before + command.delta, -100, 100);
+      if (character.honor === before) return { summaries: [] };
+      return { summaries: [`Onur ${signed(character.honor - before)}`] };
+    }
+    case "guild_lp": {
+      if (game.settings.genre !== "veyra") return { summaries: [], error: "Lonca yalnız Veyra'da" };
+      const before = character.guildPoints;
+      character.guildPoints = clamp(before + command.delta, 0, 999999);
+      if (character.guildPoints === before) return { summaries: [] };
+      return { summaries: [`Lonca puanı ${signed(character.guildPoints - before)}`] };
+    }
+    case "guild_promote": {
+      const next = nextGuildRank(character.guildRank, character.level, character.guildPoints);
+      if (!next) return { summaries: [], error: "Terfi şartı yok" };
+      character.guildRank = next;
+      return { summaries: [`Lonca: ${next}`] };
+    }
+    case "talent_unlock": {
+      const plan = unlockPlan(character, command.id);
+      if ("error" in plan) return { summaries: [], error: plan.error };
+      const found = findNode(command.id);
+      if (!found) return { summaries: [], error: "Yetenek yok" };
+      if (plan.usePeak) character.peakGifts -= 1;
+      else character.talentPoints -= plan.cost;
+      character.talents.push(found.node.id);
+      if (found.node.spell && !character.spells.some((spell) => sameName(spell, found.node.name))) character.spells.push(found.node.name);
+      return { summaries: [`Yetenek: ${found.node.name}`] };
+    }
+    case "oath_set": {
+      if (character.oath) return { summaries: [], error: "Yemin bir kez edilir" };
+      character.oath = command.name;
+      return { summaries: [`Yemin: ${command.name}`] };
     }
     case "journal_add": {
       game.journal.unshift({ id: uid(), content: command.text, createdAt: now() });

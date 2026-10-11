@@ -5,6 +5,7 @@ import { getPack, PACKS } from "@/lib/campaigns";
 import { DEFAULT_MODEL } from "@/lib/storage";
 import { modifier } from "@/lib/dice";
 import { xpThreshold } from "@/lib/format";
+import { levelCap, statCap } from "@/lib/veyra";
 import {
   DIFFICULTY_LABEL,
   GENRE_LABEL,
@@ -16,6 +17,7 @@ import {
   type TabId,
 } from "@/lib/types";
 import { InventoryMenu, PaperDoll, QuestMenu, WorldMenu } from "./menus";
+import { VeyraSheet } from "./VeyraSheet";
 import { useGame } from "./GameApp";
 import { compressImage } from "./imageFile";
 
@@ -52,7 +54,10 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
   if (!game) return null;
   const character = game.character;
   const hpPct = Math.round((character.hp / Math.max(1, character.maxHp)) * 100);
-  const ready = character.xp >= xpThreshold(character.level) && character.level < 20;
+  const cap = levelCap(game.settings.genre);
+  const ceiling = game.settings.genre === "veyra" ? statCap(character.level) : 20;
+  const ready = character.xp >= xpThreshold(character.level) && character.level < cap;
+  const pool = game.settings.genre === "veyra" ? "Öz" : "Mana";
   return (
     <>
       <div className="sheet-id">
@@ -61,6 +66,8 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
       </div>
       {ready ? <button className="level-glow" onClick={() => commands([{ type: "level_up" }], "Seviye")}>Seviye atla</button> : null}
       {character.statPoints > 0 ? <p className="level-glow">Dağıtılacak puan {character.statPoints}</p> : null}
+      {game.settings.genre === "veyra" && character.talentPoints > 0 ? <p className="level-glow">Yetenek puanı {character.talentPoints}</p> : null}
+      <VeyraSheet compact />
       <PaperDoll onBrowse={() => onJump?.("inventory")} />
       <div className="sheet-vitals">
         <div className="hp-orb hp-orb-lg" data-low={hpPct < 35}>
@@ -70,7 +77,7 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
         <div>
           <p className="meta">Can</p>
           <p>XP {character.xp}/{xpThreshold(character.level)} · {character.gold} {game.settings.currency}</p>
-          {game.settings.magic && character.maxMana > 0 ? <p className="meta">Mana {character.mana}/{character.maxMana}</p> : null}
+          {game.settings.magic && character.maxMana > 0 ? <p className="meta">{pool} {character.mana}/{character.maxMana}</p> : null}
           {character.statPoints > 0 ? <p className="meta">Dağıtılacak puan {character.statPoints}</p> : null}
         </div>
       </div>
@@ -86,7 +93,7 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
                 aria-label={STAT_LABEL[key]}
                 type="number"
                 min={1}
-                max={24}
+                max={game.settings.genre === "veyra" ? 30 : 24}
                 defaultValue={score}
                 key={`${key}-${score}`}
                 onBlur={(event) => {
@@ -95,11 +102,12 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
                 }}
               />
               <span className="ability-name">{STAT_SHORT[key]}</span>
-              <button type="button" className="ability-plus" disabled={character.statPoints <= 0 || score >= 20} onClick={() => commands([{ type: "stat", stat: key, delta: 1 }], "Stat")}>+</button>
+              <button type="button" className="ability-plus" disabled={character.statPoints <= 0 || score >= ceiling} onClick={() => commands([{ type: "stat", stat: key, delta: 1 }], "Stat")}>+</button>
             </div>
           );
         })}
       </div>
+      <VeyraSheet />
       <details className="sheet-more">
         <summary>Kağıdı düzenle</summary>
       <div className="row">
@@ -127,20 +135,20 @@ function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
         <BlurText label="Ad" value={character.name} onCommit={(name) => patchMeta({ name })} />
         <BlurText label="Sınıf" value={character.className} onCommit={(className) => patchMeta({ className })} />
         <BlurText label="Köken" value={character.race} onCommit={(race) => patchMeta({ race })} />
-        <Num label="Yaş" value={character.age} min={1} max={120} onCommit={(age) => patchMeta({ age })} />
-        <Num label="Seviye" value={character.level} min={1} max={20} onCommit={(value) => commands([{ type: "set_level", value }], "Seviye")} />
+        <Num label="Yaş" value={character.age} min={1} max={game.settings.genre === "veyra" ? 3000 : 120} onCommit={(age) => patchMeta({ age })} />
+        <Num label="Seviye" value={character.level} min={1} max={cap} onCommit={(value) => commands([{ type: "set_level", value }], "Seviye")} />
         <Num label="XP" value={character.xp} max={99999} onCommit={(value) => commands([{ type: "set_xp", value }], "XP")} />
         <Num label="Can" value={character.hp} max={999} onCommit={(value) => commands([{ type: "set_hp", value }], "Can")} />
         <Num label="Azami can" value={character.maxHp} min={1} max={999} onCommit={(value) => commands([{ type: "set_max_hp", value }], "Can")} />
-        {game.settings.magic ? <Num label="Mana" value={character.mana} max={999} onCommit={(value) => commands([{ type: "set_mana", value }], "Mana")} /> : null}
-        {game.settings.magic ? <Num label="Azami mana" value={character.maxMana} max={999} onCommit={(value) => commands([{ type: "set_max_mana", value }], "Mana")} /> : null}
+        {game.settings.magic ? <Num label={pool} value={character.mana} max={9999} onCommit={(value) => commands([{ type: "set_mana", value }], pool)} /> : null}
+        {game.settings.magic ? <Num label={`Azami ${pool.toLocaleLowerCase("tr")}`} value={character.maxMana} max={9999} onCommit={(value) => commands([{ type: "set_max_mana", value }], pool)} /> : null}
         <Num label={game.settings.currency} value={character.gold} max={999999} onCommit={(value) => commands([{ type: "set_gold", value }], "Para")} />
       </div>
       <BlurText label="Görünüş" value={character.appearance} area onCommit={(appearance) => patchMeta({ appearance })} />
       <BlurText label="Kişilik" value={character.personality} area onCommit={(personality) => patchMeta({ personality })} />
       <BlurText label="Geçmiş" value={character.backstory} area onCommit={(backstory) => patchMeta({ backstory })} />
       <BlurText label="Not" value={character.notes} area onCommit={(notes) => patchMeta({ notes })} />
-      <SkillEditor />
+      {game.settings.genre === "veyra" ? null : <SkillEditor />}
       {game.settings.magic ? <SpellEditor /> : null}
       {Object.keys(character.reputation).length ? (
         <div>

@@ -10,7 +10,7 @@ export function parseModelJson(text: string): unknown {
   }
 }
 
-export function readAiPayload(text: string): { narrative: string; commands: unknown[]; checkStat: string; checkDc: number | null; checkReason: string } {
+export function readAiPayload(text: string): { narrative: string; commands: unknown[]; checkStat: string; checkDc: number | null; checkReason: string; checkSkill: string } {
   const parsed = parseModelJson(text);
   if (!parsed || typeof parsed !== "object") throw new Error("JSON nesne değil");
   const row = parsed as Record<string, unknown>;
@@ -21,6 +21,8 @@ export function readAiPayload(text: string): { narrative: string; commands: unkn
   const checkDc = typeof dcSource === "number" && Number.isFinite(dcSource) ? dcSource : null;
   const reasonSource = row.check_reason ?? nested?.reason;
   const checkReason = typeof reasonSource === "string" ? reasonSource : "";
+  const skillSource = row.check_skill ?? nested?.skill;
+  const checkSkill = typeof skillSource === "string" ? skillSource : "";
   let commands: unknown[] = [];
   if (Array.isArray(row.commands)) commands = row.commands;
   else if (typeof row.commands === "string") {
@@ -32,5 +34,5 @@ export function readAiPayload(text: string): { narrative: string; commands: unkn
     }
   }
   if (!narrative && !checkStat.trim()) throw new Error("Anlatı boş");
-  return { narrative: narrative.slice(0, 6000), commands, checkStat, checkDc, checkReason };
+  return { narrative: narrative.slice(0, 6000), commands, checkStat, checkDc, checkReason, checkSkill };
 }

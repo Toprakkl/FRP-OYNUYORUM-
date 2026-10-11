@@ -21,15 +21,15 @@ export const DEFAULT_PREFS: Prefs = {
   narrator: "gemini",
 };
 
-const GENRES: GenreId[] = ["orta_cag", "istihbarat", "distopya", "bilimkurgu", "ozel"];
-const THEMES: ThemeId[] = ["orta_cag", "istihbarat", "distopya", "bilimkurgu"];
+const GENRES: GenreId[] = ["veyra", "orta_cag", "istihbarat", "distopya", "bilimkurgu", "ozel"];
+const THEMES: ThemeId[] = ["veyra", "orta_cag", "istihbarat", "distopya", "bilimkurgu"];
 
 function statsOf(value: unknown): Stats {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const stats = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   for (const key of STAT_KEYS) {
     const n = Number(row[key]);
-    if (Number.isFinite(n)) stats[key] = Math.min(24, Math.max(1, Math.round(n)));
+    if (Number.isFinite(n)) stats[key] = Math.min(30, Math.max(1, Math.round(n)));
   }
   return stats;
 }
@@ -66,6 +66,17 @@ export function coerceGame(input: unknown): Game | null {
     spells: Array.isArray(row.character.spells) ? row.character.spells.filter((entry) => typeof entry === "string") : [],
     notes: row.character.notes || "",
     reputation: row.character.reputation && typeof row.character.reputation === "object" ? row.character.reputation : {},
+    honor: Number(row.character.honor) || 0,
+    talentPoints: Number(row.character.talentPoints) || 0,
+    talents: Array.isArray(row.character.talents) ? row.character.talents.filter((entry) => typeof entry === "string") : [],
+    peakGifts: Number(row.character.peakGifts) || 0,
+    guildPoints: Number(row.character.guildPoints) || 0,
+    guildRank: typeof row.character.guildRank === "string" ? row.character.guildRank : "",
+    origin: typeof row.character.origin === "string" ? row.character.origin : "",
+    oath: typeof row.character.oath === "string" ? row.character.oath : "",
+    traits: typeof row.character.traits === "string" ? row.character.traits : "",
+    lastStand: Boolean(row.character.lastStand),
+    naturalArmor: Boolean(row.character.naturalArmor),
     portraitDataUrl: row.character.portraitDataUrl,
     isAlive: row.character.isAlive !== false,
   };

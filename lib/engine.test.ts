@@ -9,6 +9,7 @@ import { undoGame } from "./history";
 import { selectLore } from "./lore";
 import { readAiPayload } from "./modelJson";
 import type { Game } from "./types";
+import { pointCost, pointSpent, withSkillBonus } from "./veyra";
 
 function game(): Game {
   return createGame({
@@ -170,6 +171,81 @@ describe("komutlar", () => {
     const undone = undoGame(withHistory);
     assert.equal(undone?.character.hp, table.character.hp);
     assert.equal(undone?.messages.length, table.messages.length);
+  });
+});
+
+describe("Veyra", () => {
+  it("puan maliyeti ve doğuş masası kanonu taşır", () => {
+    assert.equal(pointCost(8), 0);
+    assert.equal(pointCost(15), 9);
+    assert.equal(pointSpent({ str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }), 0);
+    const born = createGame({
+      genre: "veyra",
+      customGenre: "",
+      theme: "veyra",
+      classId: "savasci",
+      name: "Aria",
+      race: "İnsan",
+      age: 24,
+      concept: "Lonca kapısından girdi.",
+      difficulty: "normal",
+      magic: false,
+      tone: "normal",
+      stats: { str: 15, dex: 14, con: 13, int: 10, wis: 10, cha: 10 },
+      originId: "lonca",
+      bonusSkill: "İkna",
+    });
+    assert.equal(born.settings.magic, true);
+    assert.equal(born.settings.theme, "veyra");
+    assert.match(born.title, /VEYRA: DOĞUŞ/);
+    assert.match(born.location, /Lormarin/);
+    assert.match(born.messages[0]?.content ?? "", /YT 1247/);
+    assert.doesNotMatch(born.messages[0]?.content ?? "", /Çekirdek/);
+    assert.equal(born.character.honor, 0);
+    assert.equal(born.character.talentPoints, 2);
+    assert.equal(born.character.guildRank, "Bakır");
+    assert.ok(born.character.skills.some((skill) => skill.name === "İkna"));
+    assert.ok(born.lore.some((entry) => entry.title === "Hakem kilidi" && entry.visibility === "ai_only" && entry.alwaysInclude));
+    const leveled = applyCommands(born, [{ type: "xp", delta: 100 }], "manual");
+    assert.equal(leveled.game.character.level, 2);
+    assert.equal(leveled.game.character.statPoints, 0);
+    assert.equal(leveled.game.character.talentPoints, 4);
+  });
+
+  it("onur sınırlıdır, beceri bonusu zara eklenir, ork bir kez ayakta kalır", () => {
+    const born = createGame({
+      genre: "veyra",
+      customGenre: "",
+      theme: "veyra",
+      classId: "savasci",
+      name: "Borg",
+      race: "Ork",
+      age: 22,
+      concept: "",
+      difficulty: "sert",
+      magic: true,
+      tone: "normal",
+      stats: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 8 },
+      originId: "hrimgard",
+    });
+    assert.equal(sanitizeCommand({ type: "honor", delta: 30 }, "ai", born.settings).ok, false);
+    const honored = applyCommands(born, [{ type: "honor", delta: 5 }], "ai");
+    assert.equal(honored.game.character.honor, 5);
+    born.character.skills.push({ name: "Gizlilik", level: 1 });
+    const dice = withSkillBonus(
+      { natural: 10, stat: "dex", modifier: 0, total: 10, dc: 12, reason: "Gizlenme" },
+      born,
+      "Gizlilik",
+    );
+    assert.equal(dice.modifier, 2);
+    assert.equal(dice.total, 12);
+    born.character.hp = 4;
+    const stood = applyCommands(born, [{ type: "hp", delta: -10 }], "ai");
+    assert.equal(stood.game.character.hp, 1);
+    assert.equal(stood.game.character.isAlive, true);
+    assert.equal(stood.game.character.lastStand, false);
+    const dead = applyCommands(stood.game, [{ type: "hp", delta: -10 }], "ai");
+    assert.equal(dead.game.character.isAlive, false);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { ClassPreset, GenrePack } from "./presets";
+import { veyraPack } from "./veyra";
 
 const fighter = {
   id: "savasci",
@@ -22,6 +23,7 @@ const fighter = {
 } satisfies ClassPreset;
 
 export const PACKS: GenrePack[] = [
+  veyraPack,
   {
     id: "orta_cag",
     title: "Kül Tahtı",

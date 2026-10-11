@@ -21,6 +21,23 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
 
+[data-theme="veyra"] {
+  --bg: #10080c;
+  --bg-raise: #1a0e14;
+  --panel: #211018;
+  --story: #140a10;
+  --ink: #f6efe6;
+  --muted: #e2c2b0;
+  --faint: #9a7068;
+  --accent: #e2b15a;
+  --accent-ink: #2a1408;
+  --danger: #e23b4a;
+  --good: #d6c07a;
+  --line: rgba(226, 59, 74, 0.38);
+  --font-display: var(--font-cinzel), serif;
+  --font-body: var(--font-literata), serif;
+}
+
 [data-theme="istihbarat"] {
   --bg: #070b0a;
   --bg-raise: #0d1613;
@@ -187,7 +204,8 @@ a { color: var(--accent); }
   grid-template-areas: "hud" "story" "compose";
 }
 .hud { grid-area: hud; min-width: 0; padding: 10px 12px 8px; background: color-mix(in srgb, var(--bg-raise) 88%, transparent); border-bottom: 1px solid var(--line); }
-.who { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.who .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .portrait, .portrait img {
   width: 64px; height: 64px; border-radius: 50%;
   border: 2px solid var(--accent); object-fit: cover; background: #000;
@@ -237,7 +255,7 @@ a { color: var(--accent); }
   display: flex;
   position: fixed;
   z-index: 30;
-  left: 8px; right: 8px; bottom: 78px; top: 220px;
+  left: 8px; right: 8px; bottom: 78px; top: 236px;
   border-radius: 22px 22px 18px 18px;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 84%, transparent);
@@ -509,7 +527,7 @@ a { color: var(--accent); }
 }
 .doll-portrait { grid-area: portrait; position: relative; width: 100%; height: 100%; min-height: 96px; }
 .level-pip {
-  position: absolute; right: -2px; bottom: -2px;
+  position: absolute; left: 50%; top: 4px; transform: translateX(-50%);
   min-width: 22px; height: 22px; border-radius: 99px;
   display: grid; place-items: center;
   background: var(--accent); color: var(--accent-ink);
@@ -561,6 +579,26 @@ a { color: var(--accent); }
 .rarity-rare { box-shadow: inset 0 0 0 1px #6aa7ff, 0 0 12px rgba(106, 167, 255, 0.25); }
 .rarity-epic { box-shadow: inset 0 0 0 1px #c58bff, 0 0 12px rgba(197, 139, 255, 0.28); }
 .rarity-legendary { box-shadow: inset 0 0 0 1px #ff9a3c, 0 0 14px rgba(255, 154, 60, 0.32); }
+.origin-grid { display: grid; gap: 8px; }
+.point-left { margin: 0; font-family: var(--font-display); font-size: 1.4rem; color: var(--accent); }
+.point-left.bad { color: var(--danger); }
+.buy-list { display: grid; gap: 8px; }
+.buy-row {
+  display: grid; grid-template-columns: 52px 44px 36px 44px 1fr;
+  align-items: center; gap: 8px; min-height: 44px;
+}
+.buy-row button { min-width: 44px; min-height: 44px; }
+.buy-row strong { font-variant-numeric: tabular-nums; text-align: center; }
+.honor-line { display: grid; gap: 8px; margin: 8px 0; }
+.veyra-sheet .honor-track { margin-bottom: 4px; }
+.honor-track { height: 8px; border-radius: 99px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.honor-track span { display: block; height: 100%; background: linear-gradient(90deg, var(--danger), var(--accent), var(--good)); }
+.talent-tree { margin: 10px 0; }
+.talent-tree h3 { margin: 0 0 6px; font-size: 0.95rem; }
+.talent-node { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.talent-node p { margin: 2px 0 0; }
+.talent-node.owned strong { color: var(--accent); }
+.veyra-sheet details summary { cursor: pointer; color: var(--accent); min-height: 44px; display: grid; align-items: center; }
 @media (max-width: 959px) {
   .ability-row { display: none; }
 }

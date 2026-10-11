@@ -63,6 +63,11 @@ export type Command =
       notes?: string;
     }
   | { type: "reputation"; faction: string; delta: number }
+  | { type: "honor"; delta: number }
+  | { type: "guild_lp"; delta: number }
+  | { type: "guild_promote" }
+  | { type: "talent_unlock"; id: string }
+  | { type: "oath_set"; name: string }
   | { type: "journal_add"; text: string }
   | { type: "set_alive"; value: boolean };
 
@@ -78,6 +83,9 @@ const AI_FORBIDDEN = new Set([
   "set_level",
   "set_stat",
   "set_time",
+  "guild_promote",
+  "talent_unlock",
+  "oath_set",
   "level_up",
 ]);
 
@@ -246,7 +254,8 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
         return { ok: true, command: { type: "max_hp", delta: checked } };
       }
       if (type === "mana") {
-        const checked = limit(delta, -20, 20, source, -200, 200, "Mana");
+        const cap = settings.genre === "veyra" ? 25 : 20;
+        const checked = limit(delta, -cap, cap, source, -200, 200, "Mana");
         if (typeof checked !== "number") return checked;
         return { ok: true, command: { type: "mana", delta: checked } };
       }
@@ -256,7 +265,7 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
         return { ok: true, command: { type: "gold", delta: checked } };
       }
       if (type === "xp") {
-        const checked = limit(delta, 0, 60, source, -9999, 99999, "XP");
+        const checked = limit(delta, 0, settings.genre === "veyra" ? 80 : 60, source, -9999, 999999, "XP");
         if (typeof checked !== "number") return checked;
         return { ok: true, command: { type: "xp", delta: checked } };
       }
@@ -276,19 +285,20 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
     case "set_time": {
       const value = int(row.value ?? row.hours);
       if (value === null) return { ok: false, reason: "Sayı yok" };
-      if (type === "set_hp") return { ok: true, command: { type, value: clamp(value, 0, 999) } };
-      if (type === "set_max_hp" || type === "set_max_mana") return { ok: true, command: { type, value: clamp(value, 0, 999) } };
-      if (type === "set_mana") return { ok: true, command: { type, value: clamp(value, 0, 999) } };
+      const hpCap = settings.genre === "veyra" ? 9999 : 999;
+      if (type === "set_hp") return { ok: true, command: { type, value: clamp(value, 0, hpCap) } };
+      if (type === "set_max_hp" || type === "set_max_mana") return { ok: true, command: { type, value: clamp(value, 0, hpCap) } };
+      if (type === "set_mana") return { ok: true, command: { type, value: clamp(value, 0, hpCap) } };
       if (type === "set_gold") return { ok: true, command: { type, value: clamp(value, 0, 999999) } };
-      if (type === "set_xp") return { ok: true, command: { type, value: clamp(value, 0, 99999) } };
-      if (type === "set_level") return { ok: true, command: { type, value: clamp(value, 1, 20) } };
+      if (type === "set_xp") return { ok: true, command: { type, value: clamp(value, 0, 999999) } };
+      if (type === "set_level") return { ok: true, command: { type, value: clamp(value, 1, settings.genre === "veyra" ? 100 : 20) } };
       return { ok: true, command: { type: "set_time", hours: clamp(value, 0, 200000) } };
     }
     case "set_stat": {
       const stat = statOf(row.stat);
       const value = int(row.value);
       if (!stat || value === null) return { ok: false, reason: "Stat anlaşılmadı" };
-      return { ok: true, command: { type: "set_stat", stat, value: clamp(value, 1, 24) } };
+      return { ok: true, command: { type: "set_stat", stat, value: clamp(value, 1, settings.genre === "veyra" ? 30 : 24) } };
     }
     case "level_up":
       return { ok: true, command: { type: "level_up" } };
@@ -446,6 +456,32 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
       const checked = limit(delta, -20, 20, source, -100, 100, "İtibar");
       if (typeof checked !== "number") return checked;
       return { ok: true, command: { type: "reputation", faction, delta: checked } };
+    }
+    case "honor": {
+      const delta = int(row.delta);
+      if (delta === null || delta === 0) return { ok: false, reason: "Onur değişmedi" };
+      const checked = limit(delta, -25, 25, source, -100, 100, "Onur");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "honor", delta: checked } };
+    }
+    case "guild_lp": {
+      const delta = int(row.delta);
+      if (delta === null || delta === 0) return { ok: false, reason: "Lonca puanı değişmedi" };
+      const checked = limit(delta, -20, 20, source, -100000, 100000, "Lonca");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "guild_lp", delta: checked } };
+    }
+    case "guild_promote":
+      return { ok: true, command: { type: "guild_promote" } };
+    case "talent_unlock": {
+      const id = text(row.id ?? row.name, 40);
+      if (!id) return { ok: false, reason: "Yetenek yok" };
+      return { ok: true, command: { type: "talent_unlock", id } };
+    }
+    case "oath_set": {
+      const name = text(row.name, 40);
+      if (!name) return { ok: false, reason: "Yemin adı yok" };
+      return { ok: true, command: { type: "oath_set", name } };
     }
     case "journal_add": {
       const entry = text(row.text ?? row.name, source === "ai" ? 400 : 2000);

@@ -137,18 +137,18 @@ export function Table() {
             <span className="fill fill-xp" style={{ width: `${Math.min(100, xpPct)}%` }} />
           </div>
           {game.settings.magic && character.maxMana > 0 ? (
-            <div className="bar" aria-label={`Mana ${character.mana}`}>
+            <div className="bar" aria-label={`${game.settings.genre === "veyra" ? "Öz" : "Mana"} ${character.mana}`}>
               <span className="fill fill-mana" style={{ width: `${manaPct}%` }} />
             </div>
           ) : null}
         </div>
         <div className="hud-meta">
-          <span>Can {character.hp}/{character.maxHp}{game.settings.magic && character.maxMana > 0 ? ` · Mana ${character.mana}/${character.maxMana}` : ""} · Zırh {character.ac}</span>
-          <span>{character.gold} {game.settings.currency}</span>
+          <span>Can {character.hp}/{character.maxHp}{game.settings.magic && character.maxMana > 0 ? ` · ${game.settings.genre === "veyra" ? "Öz" : "Mana"} ${character.mana}/${character.maxMana}` : ""} · Zırh {character.ac}</span>
+          <span>{character.gold} {game.settings.currency}{game.settings.genre === "veyra" ? ` · Onur ${character.honor}` : ""}</span>
         </div>
         <div className="hud-meta">
           <span>XP {character.xp}/{xpThreshold(character.level)}</span>
-          <span>{formatWorldTime(game.worldTime)}</span>
+          <span>{game.settings.genre === "veyra" ? `YT 1247 · ${formatWorldTime(game.worldTime)}` : formatWorldTime(game.worldTime)}</span>
         </div>
         <div className="ability-row">
           {STAT_KEYS.map((key) => {

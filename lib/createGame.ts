@@ -4,6 +4,7 @@ import { now, uid } from "./ids";
 import type { ItemSeed } from "./presets";
 import type { Character, Difficulty, Game, GenreId, Item, Stats, ThemeId, Tone } from "./types";
 import { computeAc } from "./applyCommands";
+import { blankVeyraSheet, essenceMax, getOrigin, pathById, raceByName } from "./veyra";
 
 export type NewGameInput = {
   genre: GenreId;
@@ -18,6 +19,8 @@ export type NewGameInput = {
   magic: boolean;
   tone: Tone;
   stats?: Stats;
+  originId?: string;
+  bonusSkill?: string;
 };
 
 function blankStats(): Stats {
@@ -62,22 +65,35 @@ function withRace(text: string, race: string): string {
 export function createGame(input: NewGameInput): Game {
   const pack = getPack(input.genre);
   const preset = pack.classes.find((entry) => entry.id === input.classId) ?? pack.classes[0];
+  const veyra = input.genre === "veyra";
+  const origin = veyra ? getOrigin(input.originId) : null;
+  const path = veyra ? pathById(input.classId) : null;
+  const race = veyra ? raceByName(input.race) : undefined;
   const stats = input.stats ?? preset.stats;
-  const magic = input.magic;
+  const magic = veyra ? true : input.magic;
   const conShift = modifier(stats.con) - modifier(preset.stats.con);
-  const maxHp = Math.max(8, preset.hp + conShift);
-  const maxMana = magic ? Math.max(0, preset.mana + Math.max(0, modifier(stats.int) - modifier(preset.stats.int))) : 0;
+  const maxHp = path ? Math.max(1, path.die + modifier(stats.con)) : Math.max(8, preset.hp + conShift);
+  const maxMana = !magic ? 0 : path ? essenceMax(path, 1, stats, race) : Math.max(0, preset.mana + Math.max(0, modifier(stats.int) - modifier(preset.stats.int)));
   const name = input.name.trim().slice(0, 32) || "Adsız";
   const stamped = now();
   const worldLabel = input.genre === "ozel" && input.customGenre.trim() ? input.customGenre.trim() : pack.title;
-  const openingCore = withRace(pack.opening({ name, className: preset.name }), input.race);
+  const className = path?.name ?? preset.name;
+  const openingCore = withRace((origin ?? pack).opening({ name, className }), input.race);
   const opening = input.genre === "ozel" && input.customGenre.trim() ? `Dünya: ${input.customGenre.trim()}.\n\n${openingCore}` : openingCore;
+  const skills = (path?.skills ?? preset.skills).map((skill) => ({ ...skill }));
+  const bonus = input.bonusSkill?.trim();
+  if (veyra && race?.id === "insan" && bonus) {
+    const known = skills.find((skill) => skill.name.toLocaleLowerCase("tr") === bonus.toLocaleLowerCase("tr"));
+    if (known) known.level = Math.min(2, known.level + 1);
+    else skills.push({ name: bonus.slice(0, 40), level: 1 });
+  }
+  const sheet = blankVeyraSheet();
 
   const character: Character = {
     name,
-    className: preset.name,
+    className,
     race: input.race.trim(),
-    age: Math.min(120, Math.max(1, Math.round(input.age || 30))),
+    age: Math.min(veyra ? 3000 : 120, Math.max(1, Math.round(input.age || 30))),
     gender: "",
     appearance: "",
     personality: "",
@@ -88,21 +104,32 @@ export function createGame(input: NewGameInput): Game {
     maxHp,
     mana: maxMana,
     maxMana,
-    gold: preset.gold,
+    gold: (path?.gold ?? preset.gold) + (origin?.gold ?? 0),
     ac: 10,
     stats: { ...blankStats(), ...stats },
     statPoints: 0,
     conditions: [],
-    skills: preset.skills.map((skill) => ({ ...skill })),
+    skills,
     spells: magic ? [...preset.spells] : [],
     notes: "",
-    reputation: {},
+    reputation: { ...(origin?.reputation ?? {}) },
+    ...sheet,
+    talentPoints: veyra ? 2 : 0,
+    guildRank: origin?.guildRank ?? "",
+    origin: origin?.id ?? "",
+    traits: race?.trait ?? "",
+    lastStand: Boolean(race?.lastStand),
+    naturalArmor: Boolean(race?.naturalArmor),
     isAlive: true,
   };
 
-  const inventory = preset.items
+  const seeds = path?.items ?? preset.items;
+  const inventory = seeds
     .filter((item) => magic || !item.magical)
     .map((item) => materialize(item, magic));
+  if (origin?.guildRank) {
+    inventory.push(materialize({ name: "Lonca kartı", type: "quest", subtype: "kart", description: `${origin.guildRank} rütbe. Serbest Kanat.`, weight: 0, value: 0 }, true));
+  }
 
   const game: Game = {
     id: uid(),
@@ -122,29 +149,42 @@ export function createGame(input: NewGameInput): Game {
     },
     summary: "",
     summarizedMessageCount: 0,
-    worldTime: pack.worldTime,
-    location: pack.location,
+    worldTime: origin?.worldTime ?? pack.worldTime,
+    location: origin?.location ?? pack.location,
     character,
     inventory,
     quests: [
       {
         id: uid(),
-        title: pack.quest.title,
-        description: pack.quest.description,
+        title: (origin ?? pack).quest.title,
+        description: (origin ?? pack).quest.description,
         status: "active",
-        objectives: pack.quest.objectives.map((text) => ({ text, done: false })),
-        reward: pack.quest.reward,
+        objectives: (origin ?? pack).quest.objectives.map((text) => ({ text, done: false })),
+        reward: (origin ?? pack).quest.reward,
       },
     ],
-    lore: pack.lore.map((entry) => ({ ...entry, id: uid(), tags: [...entry.tags] })),
+    lore: [
+      ...pack.lore.map((entry) => ({ ...entry, id: uid(), tags: [...entry.tags] })),
+      ...(origin
+        ? [{
+            id: uid(),
+            kind: "story" as const,
+            title: origin.name,
+            content: origin.lore,
+            tags: [origin.id, origin.location],
+            visibility: "player_visible" as const,
+            alwaysInclude: true,
+          }]
+        : []),
+    ],
     npcs: [
       {
         id: uid(),
-        name: pack.npc.name,
-        attitude: pack.npc.attitude,
+        name: (origin ?? pack).npc.name,
+        attitude: (origin ?? pack).npc.attitude,
         status: "alive",
-        location: pack.npc.location,
-        notes: pack.npc.notes,
+        location: (origin ?? pack).npc.location,
+        notes: (origin ?? pack).npc.notes,
       },
     ],
     messages: [{ id: uid(), role: "ai", content: opening, createdAt: stamped }],
