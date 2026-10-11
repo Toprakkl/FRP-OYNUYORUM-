@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { getPack, PACKS } from "@/lib/campaigns";
 import { modifier, roll4d6DropLowest } from "@/lib/dice";
-import { STAT_KEYS, STAT_LABEL, type GenreId, type Stats } from "@/lib/types";
+import { STAT_KEYS, STAT_SHORT, type GenreId, type Stats } from "@/lib/types";
 import { useGame } from "./GameApp";
 
 export function Wizard() {
@@ -103,22 +103,29 @@ export function Wizard() {
             }}>4d6 at</button>
             <span className="meta">Can {hp}{magic && mana ? ` · Mana ${mana}` : ""} · {preset.gold} {pack.currency}</span>
           </div>
-          <div className="stat-grid">
-            {STAT_KEYS.map((key) => (
-              <label key={key} className="field">
-                {STAT_LABEL[key]}
-                <input
-                  type="number"
-                  min={3}
-                  max={18}
-                  value={stats[key]}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    if (Number.isFinite(next)) setStats((prev) => ({ ...prev, [key]: next }));
-                  }}
-                />
-              </label>
-            ))}
+          <div className="abilities">
+            {STAT_KEYS.map((key) => {
+              const score = stats[key];
+              const mod = modifier(score);
+              return (
+                <label key={key} className="ability">
+                  <span className="ability-mod">{mod >= 0 ? `+${mod}` : mod}</span>
+                  <input
+                    className="ability-score"
+                    type="number"
+                    min={3}
+                    max={18}
+                    aria-label={STAT_SHORT[key]}
+                    value={score}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (Number.isFinite(next)) setStats((prev) => ({ ...prev, [key]: next }));
+                    }}
+                  />
+                  <span className="ability-name">{STAT_SHORT[key]}</span>
+                </label>
+              );
+            })}
           </div>
           <div className="chips">
             {(["kolay", "normal", "sert"] as const).map((entry) => (

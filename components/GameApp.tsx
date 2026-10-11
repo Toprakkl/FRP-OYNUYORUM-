@@ -9,7 +9,7 @@ import { takeSnap, undoGame } from "@/lib/history";
 import { now, uid } from "@/lib/ids";
 import { slug } from "@/lib/format";
 import { DEFAULT_PREFS, PREFS_KEY, SAVE_KEY, coerceGame, stripForApi, type Prefs } from "@/lib/storage";
-import type { Character, ChatMessage, DiceResolved, Game, GameSettings, LoreEntry, StatKey } from "@/lib/types";
+import type { Character, ChatMessage, DiceResolved, Game, GameSettings, LoreEntry } from "@/lib/types";
 import { HomeScreen } from "./HomeScreen";
 import { Table } from "./Table";
 import { Wizard } from "./Wizard";
@@ -42,7 +42,7 @@ type Api = {
   exportGame: (id: string) => void;
   importGame: (file: File) => Promise<void>;
   setPrefs: (partial: Partial<Prefs>) => void;
-  send: (message: string, dice: { natural: number; stat: StatKey | null } | null) => Promise<boolean>;
+  send: (message: string) => Promise<{ ok: boolean; dice: DiceResolved | null }>;
   commands: (list: Command[], label: string) => void;
   patchMeta: (partial: Partial<Character>) => void;
   setSettings: (partial: Partial<GameSettings>) => void;
@@ -195,13 +195,13 @@ export function GameApp() {
         }
       },
       setPrefs,
-      send: async (message, dice) => {
+      send: async (message) => {
         const text = message.trim();
         const current = save.games.find((entry) => entry.id === save.activeId);
-        if (!text || !current || busy) return false;
+        if (!text || !current || busy) return { ok: false, dice: null };
         if (!current.character.isAlive) {
           setError("Karakter ölü. Karakter sayfasından diriltmeden devam edemez.");
-          return false;
+          return { ok: false, dice: null };
         }
         setBusy(true);
         setError(null);
@@ -212,7 +212,6 @@ export function GameApp() {
             body: JSON.stringify({
               game: stripForApi(current),
               message: text,
-              dice,
               apiKey: prefs.apiKey,
               model: prefs.model,
               narrator: prefs.narrator,
@@ -247,10 +246,10 @@ export function GameApp() {
               })
               .catch(() => undefined);
           }
-          return true;
+          return { ok: true, dice: data.dice ?? null };
         } catch (err) {
           setError(err instanceof Error ? err.message : "Tur başarısız");
-          return false;
+          return { ok: false, dice: null };
         } finally {
           setBusy(false);
         }

@@ -4,7 +4,7 @@ import { applyCommands } from "./applyCommands";
 import { acceptCommands, sanitizeCommand } from "./commands";
 import { createGame } from "./createGame";
 import { resolveDice } from "./dice";
-import { fallbackTurn } from "./fallback";
+import { playLocalTurn } from "./fallback";
 import { undoGame } from "./history";
 import { selectLore } from "./lore";
 import { readAiPayload } from "./modelJson";
@@ -187,9 +187,22 @@ describe("hakem metni", () => {
     assert.ok(slices.some((entry) => entry.title === "Külkapı"));
   });
 
-  it("yerel anlatıcı risksiz turda zar ister", () => {
-    const turn = fallbackTurn(game(), "Kapıyı sessizce açıyorum", null);
-    assert.match(turn.narrative, /Zar/);
-    assert.equal(turn.commands.length, 0);
+  it("yerel anlatıcı riskli işte kendi zarını atar", () => {
+    const turn = playLocalTurn(game(), "Kapıyı sessizce açıyorum", 18);
+    assert.equal(turn.dice?.natural, 18);
+    assert.equal(turn.dice?.stat, "dex");
+    assert.equal(turn.dice?.reason, "Gizlenme");
+    assert.ok(turn.dice && turn.dice.total >= turn.dice.dc);
+    assert.doesNotMatch(turn.narrative, /Zar atmadan/);
+  });
+
+  it("dinlenmek zar istemez, zar isteği anlatısız okunur", () => {
+    const quiet = playLocalTurn(game(), "Bir süre dinleniyorum", 20);
+    assert.equal(quiet.dice, null);
+    assert.match(quiet.narrative, /Nefes/);
+    const check = readAiPayload('{"narrative":"","commands":[],"check_stat":"dex","check_dc":15,"check_reason":"Kilit"}');
+    assert.equal(check.checkStat, "dex");
+    assert.equal(check.checkDc, 15);
+    assert.equal(check.narrative, "");
   });
 });

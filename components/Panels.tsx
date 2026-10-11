@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { carryCapacity, carriedWeight } from "@/lib/applyCommands";
 import { getPack, PACKS } from "@/lib/campaigns";
 import { DEFAULT_MODEL } from "@/lib/storage";
+import { modifier } from "@/lib/dice";
 import { formatWorldTime, xpThreshold } from "@/lib/format";
 import {
   DIFFICULTY_LABEL,
@@ -17,6 +18,7 @@ import {
   SLOTS,
   STAT_KEYS,
   STAT_LABEL,
+  STAT_SHORT,
   THEME_LABEL,
   TONE_LABEL,
   type Item,
@@ -59,8 +61,59 @@ function CharacterPanel() {
   const { game, commands, patchMeta } = useGame();
   if (!game) return null;
   const character = game.character;
+  const hpPct = Math.round((character.hp / Math.max(1, character.maxHp)) * 100);
   return (
     <>
+      <div className="sheet-hero">
+        <div className="portrait portrait-lg">
+          {character.portraitDataUrl ? <img src={character.portraitDataUrl} alt="" /> : character.name.slice(0, 1).toLocaleUpperCase("tr")}
+        </div>
+        <div>
+          <h2 className="sheet-name">{character.name}</h2>
+          <p className="meta">{character.className} · Seviye {character.level}</p>
+          <p className="meta">{character.race || "Köken yok"} · Zırh {character.ac}</p>
+        </div>
+      </div>
+      <div className="sheet-vitals">
+        <div className="hp-orb hp-orb-lg" data-low={hpPct < 35}>
+          <strong>{character.hp}</strong>
+          <small>/{character.maxHp}</small>
+        </div>
+        <div>
+          <p className="meta">Can</p>
+          <p>XP {character.xp}/{xpThreshold(character.level)} · {character.gold} {game.settings.currency}</p>
+          {game.settings.magic && character.maxMana > 0 ? <p className="meta">Mana {character.mana}/{character.maxMana}</p> : null}
+          {character.statPoints > 0 ? <p className="meta">Dağıtılacak puan {character.statPoints}</p> : null}
+        </div>
+      </div>
+      <div className="abilities">
+        {STAT_KEYS.map((key) => {
+          const score = character.stats[key];
+          const mod = modifier(score);
+          return (
+            <div key={key} className="ability">
+              <span className="ability-mod">{mod >= 0 ? `+${mod}` : mod}</span>
+              <input
+                className="ability-score"
+                aria-label={STAT_LABEL[key]}
+                type="number"
+                min={1}
+                max={24}
+                defaultValue={score}
+                key={`${key}-${score}`}
+                onBlur={(event) => {
+                  const value = Number(event.target.value);
+                  if (Number.isFinite(value) && value !== score) commands([{ type: "set_stat", stat: key, value }], "Stat");
+                }}
+              />
+              <span className="ability-name">{STAT_SHORT[key]}</span>
+              <button type="button" className="ability-plus" disabled={character.statPoints <= 0 || score >= 20} onClick={() => commands([{ type: "stat", stat: key, delta: 1 }], "Stat")}>+</button>
+            </div>
+          );
+        })}
+      </div>
+      <details className="sheet-more">
+        <summary>Kağıdı düzenle</summary>
       <div className="row">
         <label className="primary" style={{ display: "inline-grid", placeItems: "center", minHeight: 44, padding: "0 12px", background: "var(--accent)", color: "var(--accent-ink)", borderRadius: 12 }}>
           Portre yükle
@@ -95,28 +148,6 @@ function CharacterPanel() {
         {game.settings.magic ? <Num label="Azami mana" value={character.maxMana} max={999} onCommit={(value) => commands([{ type: "set_max_mana", value }], "Mana")} /> : null}
         <Num label={game.settings.currency} value={character.gold} max={999999} onCommit={(value) => commands([{ type: "set_gold", value }], "Para")} />
       </div>
-      <p className="meta">Sonraki seviye {xpThreshold(character.level)} XP · Zırh sınıfı {character.ac} · Dağıtılacak puan {character.statPoints}</p>
-      <div className="stat-grid">
-        {STAT_KEYS.map((key) => (
-          <div key={key} className="field">
-            <span>{STAT_LABEL[key]}</span>
-            <div className="row">
-              <input
-                type="number"
-                min={1}
-                max={24}
-                defaultValue={character.stats[key]}
-                key={`${key}-${character.stats[key]}`}
-                onBlur={(event) => {
-                  const value = Number(event.target.value);
-                  if (Number.isFinite(value) && value !== character.stats[key]) commands([{ type: "set_stat", stat: key, value }], "Stat");
-                }}
-              />
-              <button type="button" disabled={character.statPoints <= 0 || character.stats[key] >= 20} onClick={() => commands([{ type: "stat", stat: key, delta: 1 }], "Stat")}>+</button>
-            </div>
-          </div>
-        ))}
-      </div>
       <BlurText label="Görünüş" value={character.appearance} area onCommit={(appearance) => patchMeta({ appearance })} />
       <BlurText label="Kişilik" value={character.personality} area onCommit={(personality) => patchMeta({ personality })} />
       <BlurText label="Geçmiş" value={character.backstory} area onCommit={(backstory) => patchMeta({ backstory })} />
@@ -129,6 +160,7 @@ function CharacterPanel() {
           {Object.entries(character.reputation).map(([faction, value]) => <p key={faction}>{faction}: {value}</p>)}
         </div>
       ) : null}
+      </details>
     </>
   );
 }

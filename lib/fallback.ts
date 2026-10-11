@@ -1,4 +1,6 @@
+import { localCheck } from "./checks";
 import type { Command } from "./commands";
+import { resolveDice, rollD20 } from "./dice";
 import type { DiceResolved, Game } from "./types";
 
 function hash(seed: string): number {
@@ -65,10 +67,16 @@ export function fallbackTurn(game: Game, message: string, dice: DiceResolved | n
     } else {
       narrative = `${place} sana istediğin açıklığı vermez. ${name}, baktığın yer ya karanlık ya da kasıtlı olarak boş. Daha yakından bakmak için bir zar, ya da başka bir açı gerekir.`;
     }
+  } else if (/aç|kilit|gizlen|sokul|kaç|tırman|atla|sessiz|gir|çöz|takip|çalı/.test(lower)) {
+    if (success) {
+      commands.push({ type: "time", delta_hours: 1 });
+      narrative = `${name}, ${place} içinde hamleni bitiriyorsun. ${message} Engel yerini belli etti ve sen geçtin. İz kalabilir.`;
+    } else {
+      commands.push({ type: "hp", delta: -2 });
+      narrative = `${name}, ${place} içinde bunu deniyorsun ama tutmuyor. ${message} Gürültü, kilit ya da zemin seni ele veriyor.`;
+    }
   } else if (dice && !success) {
-    narrative = `${name}, ${place} içinde bunu denersin: ${message} Sonuç yarım kalır. Engel yıkılmaz, sadece yerini belli eder. Vazgeçebilir, başka bir statla yeniden atabilir ya da bedelini göze alıp üstüne gidebilirsin.`;
-  } else if (!dice && /kaç|gir|aç|çöz|çalı|öldür|ikna|takip/.test(lower)) {
-    narrative = `${name}, ${place} içinde bu riskli. ${message} Zar atmadan bunun sonucunu bağlamıyorum. Güç, çeviklik, zeka ya da sezgi: hangisiyse onu seçip d20 at, sonra aynı niyeti yeniden yaz.`;
+    narrative = `${name}, ${place} içinde bunu denersin: ${message} Sonuç yarım kalır. Engel yıkılmaz, sadece yerini belli eder.`;
   } else {
     narrative = pick(
       [
@@ -85,4 +93,16 @@ export function fallbackTurn(game: Game, message: string, dice: DiceResolved | n
   }
 
   return { narrative, commands };
+}
+
+export function playLocalTurn(game: Game, message: string, fixedNatural?: number): { narrative: string; commands: Command[]; dice: DiceResolved | null } {
+  const check = localCheck(message, game.settings.difficulty);
+  if (!check) {
+    const quiet = fallbackTurn(game, message, null);
+    return { ...quiet, dice: null };
+  }
+  const dice = resolveDice(fixedNatural ?? rollD20(), check.stat, game.character.stats, game.settings.difficulty, check.dc);
+  dice.reason = check.reason;
+  const turn = fallbackTurn(game, message, dice);
+  return { ...turn, dice };
 }

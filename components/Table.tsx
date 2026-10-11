@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDice, modifier, rollD20 } from "@/lib/dice";
 import { formatWorldTime, xpThreshold } from "@/lib/format";
-import { STAT_KEYS, STAT_SHORT, type StatKey, type TabId } from "@/lib/types";
+import { STAT_KEYS, STAT_LABEL, STAT_SHORT, type DiceResolved, type TabId } from "@/lib/types";
 import { useGame } from "./GameApp";
 import { Panel } from "./Panels";
 import { playDiceSound } from "./sound";
@@ -22,14 +22,11 @@ export function Table() {
   const [tab, setTab] = useState<TabId | null>(null);
   const [desktop, setDesktop] = useState(false);
   const [draft, setDraft] = useState("");
-  const [stat, setStat] = useState<StatKey | "">("");
+  const [reveal, setReveal] = useState<DiceResolved | null>(null);
   const [face, setFace] = useState<number | null>(null);
-  const [spin, setSpin] = useState<number | null>(null);
-  const [rolling, setRolling] = useState(false);
+  const [landed, setLanded] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const committed = useRef<number | null>(null);
-  const rollToken = useRef(0);
   const submitting = useRef(false);
 
   useEffect(() => {
@@ -76,62 +73,46 @@ export function Table() {
   const xpPct = Math.round((character.xp / xpThreshold(character.level)) * 100);
   const manaPct = character.maxMana ? Math.round((character.mana / character.maxMana) * 100) : 0;
   const shown = tab ?? (desktop ? "character" : null);
-  const mod = stat ? modifier(character.stats[stat]) : 0;
-  const shownFace = spin ?? face;
-
-  function clearRoll() {
-    rollToken.current += 1;
-    committed.current = null;
-    setFace(null);
-    setSpin(null);
-    setRolling(false);
-  }
-
-  async function roll() {
-    if (rolling || busy) return;
-    const token = ++rollToken.current;
-    setRolling(true);
-    committed.current = null;
-    setFace(null);
-    const final = rollD20();
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!reduce) {
-      for (let i = 0; i < 8; i += 1) {
-        if (rollToken.current !== token) return;
-        setSpin(rollD20());
-        await wait(45 + i * 18);
-      }
-    }
-    if (rollToken.current !== token) return;
-    setSpin(null);
-    committed.current = final;
-    setFace(final);
-    setRolling(false);
-    if (prefs.sound) playDiceSound(final);
-    if (final === 1 || final === 20) navigator.vibrate?.(final === 20 ? [24, 40, 24] : 30);
-  }
 
   async function submit() {
     const text = draft.trim();
-    if (!text || busy || submitting.current) return;
+    if (!text || busy || reveal || submitting.current) return;
     submitting.current = true;
+    setDraft("");
     try {
-      if (rolling) {
-        const token = rollToken.current;
-        while (rollToken.current === token && committed.current === null) await wait(40);
-        if (rollToken.current !== token || committed.current === null) return;
+      const result = await send(text);
+      if (!result.ok) {
+        setDraft(text);
+        return;
       }
-      const natural = committed.current;
-      const dice = natural ? { natural, stat: stat || null } : null;
-      const ok = await send(text, dice);
-      if (ok) {
-        setDraft("");
-        clearRoll();
-      }
+      if (result.dice) await play(result.dice);
     } finally {
       submitting.current = false;
     }
   }
+
+  async function play(dice: DiceResolved) {
+    setReveal(dice);
+    setLanded(false);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduce) {
+      for (let i = 0; i < 10; i += 1) {
+        setFace(rollD20());
+        await wait(55 + i * 12);
+      }
+    }
+    setFace(dice.natural);
+    setLanded(true);
+    if (prefs.sound) playDiceSound(dice.natural);
+    if (dice.natural === 1 || dice.natural === 20) navigator.vibrate?.(dice.natural === 20 ? [24, 40, 24] : 30);
+    await wait(reduce ? 500 : 1400);
+    setReveal(null);
+    setFace(null);
+    setLanded(false);
+  }
+
+  const shownFace = face ?? reveal?.natural ?? null;
+  const mark = reveal ? rollMark(reveal) : "";
 
   return (
     <div className="table">
@@ -144,9 +125,13 @@ export function Table() {
             <h2>{character.name}</h2>
             <div className="meta">{character.className} · Sv {character.level} · {game.location}</div>
           </div>
+          <div className="hp-orb" aria-label={`Can ${character.hp} / ${character.maxHp}`}>
+            <strong>{character.hp}</strong>
+            <small>/{character.maxHp}</small>
+          </div>
         </div>
         <div className="bars">
-          <div className="bar" aria-label={`Can ${character.hp} / ${character.maxHp}`}>
+          <div className="bar" aria-hidden="true">
             <span className="fill fill-hp" data-low={hpPct < 35} style={{ width: `${hpPct}%` }} />
           </div>
           <div className="bar" aria-label={`Deneyim ${character.xp}`}>
@@ -159,14 +144,24 @@ export function Table() {
           ) : null}
         </div>
         <div className="hud-meta">
-          <span>Can {character.hp}/{character.maxHp}{game.settings.magic && character.maxMana > 0 ? ` · Mana ${character.mana}/${character.maxMana}` : ""}</span>
+          <span>Can {character.hp}/{character.maxHp}{game.settings.magic && character.maxMana > 0 ? ` · Mana ${character.mana}/${character.maxMana}` : ""} · Zırh {character.ac}</span>
           <span>{character.gold} {game.settings.currency}</span>
         </div>
         <div className="hud-meta">
-          <span>XP {character.xp}/{xpThreshold(character.level)} · Zırh {character.ac}</span>
+          <span>XP {character.xp}/{xpThreshold(character.level)}</span>
           <span>{formatWorldTime(game.worldTime)}</span>
         </div>
-        <div className="meta">{STAT_KEYS.map((key) => `${STAT_SHORT[key]} ${character.stats[key]}`).join(" · ")}</div>
+        <div className="ability-row">
+          {STAT_KEYS.map((key) => {
+            const mod = modifier(character.stats[key]);
+            return (
+              <div key={key} className="ability-mini" title={`${STAT_LABEL[key]} ${character.stats[key]}`}>
+                <b>{mod >= 0 ? `+${mod}` : mod}</b>
+                <small>{STAT_SHORT[key]}</small>
+              </div>
+            );
+          })}
+        </div>
         {character.conditions.length ? (
           <div className="conds">
             {character.conditions.map((condition) => (
@@ -200,7 +195,7 @@ export function Table() {
               {message.effects?.length ? <div className="effects">{message.effects.map((effect) => <span key={effect}>{effect}</span>)}</div> : null}
             </article>
           ))}
-          {busy ? <p className="thinking">Oyun yöneticisi yazıyor…</p> : null}
+          {busy ? <p className="thinking">Masa düşünüyor…</p> : null}
         </div>
       </div>
       <form
@@ -210,26 +205,7 @@ export function Table() {
           void submit();
         }}
       >
-        <div className="composer-tools">
-          <label className="field" style={{ width: "auto" }}>
-            Zar statı
-            <select value={stat} onChange={(event) => setStat(event.target.value as StatKey | "")} aria-label="Zar statı">
-              <option value="">GM yorumlasın</option>
-              {STAT_KEYS.map((key) => <option key={key} value={key}>{STAT_SHORT[key]} {modifier(character.stats[key]) >= 0 ? "+" : ""}{modifier(character.stats[key])}</option>)}
-            </select>
-          </label>
-          {shownFace ? <span className="pending">d20 {shownFace}{!spin && stat ? ` ${mod >= 0 ? "+" : ""}${mod} = ${shownFace + mod}` : ""} <button type="button" onClick={clearRoll}>sil</button></span> : <span className="faint">Riskliyse zar at.</span>}
-        </div>
-        <button
-          type="button"
-          className={`dice ${rolling ? "dice-rolling" : ""} ${!spin && face === 20 ? "dice-crit" : ""} ${!spin && face === 1 ? "dice-fail" : ""}`}
-          data-testid="dice"
-          onClick={() => void roll()}
-          disabled={busy}
-          aria-label="d20 at"
-        >
-          {shownFace ?? "d20"}
-        </button>
+        <p className="composer-hint">Ne yaptığını yaz. Zar gerekiyorsa masa kendi atar.</p>
         <textarea
           data-testid="composer"
           value={draft}
@@ -242,13 +218,35 @@ export function Table() {
             }
           }}
         />
-        <button className="primary send" data-testid="send" disabled={busy || !draft.trim()}>Gönder</button>
+        <button className="primary send" data-testid="send" disabled={busy || Boolean(reveal) || !draft.trim()}>Gönder</button>
       </form>
       <aside className={`panel ${shown ? "open" : ""}`}>
         {shown ? <Panel tab={shown} onClose={() => setTab(null)} desktop={desktop} /> : null}
       </aside>
+      {reveal ? (
+        <div className="theater" data-testid="theater">
+          <div className={`die ${landed ? (mark === "Başarısız" || mark === "Fiyasko" ? "die-fail" : "die-success") : "die-spin"}`} data-testid="dice">
+            {shownFace}
+          </div>
+          {landed ? (
+            <>
+              <p className="theater-mark">{mark}</p>
+              <p className="theater-detail">{reveal.stat ? STAT_LABEL[reveal.stat] : "Zar"}{reveal.reason ? ` · ${reveal.reason}` : ""}</p>
+              <p className="theater-detail">{`d20 ${reveal.natural} ${reveal.modifier >= 0 ? `+${reveal.modifier}` : reveal.modifier} = ${reveal.total} · DC ${reveal.dc}`}</p>
+            </>
+          ) : (
+            <p className="theater-detail">Zar dönüyor</p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function rollMark(dice: DiceResolved): string {
+  if (dice.natural === 20) return "Kritik";
+  if (dice.natural === 1) return "Fiyasko";
+  return dice.total >= dice.dc ? "Başarılı" : "Başarısız";
 }
 
 function initials(name: string) {

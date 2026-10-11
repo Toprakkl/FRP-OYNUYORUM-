@@ -258,6 +258,7 @@ export type DiceResolved = {
   modifier: number;
   total: number;
   dc: number;
+  reason?: string;
 };
 
 export type ChatMessage = {

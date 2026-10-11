@@ -1,4 +1,5 @@
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory, Type, type GenerateContentConfig, type ThinkingConfig } from "@google/genai";
+import { parseCheck, type CheckRequest } from "./checks";
 import { readAiPayload } from "./modelJson";
 import type { Game } from "./types";
 import { buildSystemPrompt, buildUserPrompt } from "./prompt";
@@ -43,6 +44,9 @@ const SCHEMA = {
         required: ["type"],
       },
     },
+    check_stat: { type: Type.STRING },
+    check_dc: { type: Type.NUMBER },
+    check_reason: { type: Type.STRING },
   },
   required: ["narrative", "commands"],
 };
@@ -107,7 +111,9 @@ export async function askGameMaster(options: {
   game: Game;
   message: string;
   dice: DiceResolved | null;
-}): Promise<{ narrative: string; commands: unknown[]; blocked: boolean }> {
+  allowCheck?: boolean;
+}): Promise<{ narrative: string; commands: unknown[]; blocked: boolean; check: CheckRequest | null }> {
+  const allowCheck = options.allowCheck !== false && !options.dice;
   const system = buildSystemPrompt(options.game);
   const user = buildUserPrompt(options.game, options.message, options.dice);
   let hint = "";
@@ -119,16 +125,23 @@ export async function askGameMaster(options: {
       const response = await generate(options.apiKey, options.model, system, user + hint, options.game, withSchema, withThinking);
       const finish = response.candidates?.[0]?.finishReason;
       if (finish === "SAFETY" || response.promptFeedback?.blockReason) {
-        return { narrative: SOFT, commands: [], blocked: true };
+        return { narrative: SOFT, commands: [], blocked: true, check: null };
       }
       const text = response.text ?? "";
       if (!text.trim()) {
         lastError = "Boş yanıt";
-        hint = "\n\nYalnızca narrative ve commands içeren JSON döndür.";
+        hint = "\n\nYalnızca JSON döndür.";
         continue;
       }
       const payload = readAiPayload(text);
-      return { narrative: payload.narrative, commands: payload.commands, blocked: false };
+      const check = allowCheck ? parseCheck(payload.checkStat, payload.checkDc, payload.checkReason, options.game.settings.difficulty) : null;
+      if (check) return { narrative: "", commands: [], blocked: false, check };
+      if (!payload.narrative) {
+        lastError = "Anlatı boş";
+        hint = "\n\nZar sonucu belli. check_stat boş bırak ve narrative yaz.";
+        continue;
+      }
+      return { narrative: payload.narrative, commands: payload.commands, blocked: false, check: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (/thinking/i.test(message) && withThinking) {
@@ -141,7 +154,7 @@ export async function askGameMaster(options: {
       }
       if (/JSON|Anlatı boş|nesne değil/i.test(message)) {
         lastError = message;
-        hint = "\n\nÖnceki çıktın geçersizdi. Yalnızca {\"narrative\":\"...\",\"commands\":[]} biçiminde JSON döndür.";
+        hint = "\n\nÖnceki çıktın geçersizdi. Yalnızca {\"narrative\":\"...\",\"commands\":[],\"check_stat\":\"\",\"check_dc\":0,\"check_reason\":\"\"} biçiminde JSON döndür.";
         continue;
       }
       throw err;
