@@ -38,6 +38,7 @@ describe("zar ve masa", () => {
   it("yeni macera açılış, eşya ve görevle gelir", () => {
     const created = game();
     assert.equal(created.character.name, "Aria");
+    assert.equal(created.messages[0]?.content.includes("oluşun"), false);
     assert.equal(created.messages[0]?.role, "ai");
     assert.ok(created.inventory.some((item) => item.name === "Demir kılıç" && item.equippedSlot === "main_hand"));
     assert.equal(created.quests[0]?.status, "active");

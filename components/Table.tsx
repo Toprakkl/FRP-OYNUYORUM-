@@ -24,9 +24,13 @@ export function Table() {
   const [draft, setDraft] = useState("");
   const [stat, setStat] = useState<StatKey | "">("");
   const [face, setFace] = useState<number | null>(null);
+  const [spin, setSpin] = useState<number | null>(null);
   const [rolling, setRolling] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const committed = useRef<number | null>(null);
+  const rollToken = useRef(0);
+  const submitting = useRef(false);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 960px)");
@@ -73,18 +77,34 @@ export function Table() {
   const manaPct = character.maxMana ? Math.round((character.mana / character.maxMana) * 100) : 0;
   const shown = tab ?? (desktop ? "character" : null);
   const mod = stat ? modifier(character.stats[stat]) : 0;
+  const shownFace = spin ?? face;
+
+  function clearRoll() {
+    rollToken.current += 1;
+    committed.current = null;
+    setFace(null);
+    setSpin(null);
+    setRolling(false);
+  }
 
   async function roll() {
     if (rolling || busy) return;
+    const token = ++rollToken.current;
     setRolling(true);
+    committed.current = null;
+    setFace(null);
     const final = rollD20();
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!reduce) {
       for (let i = 0; i < 8; i += 1) {
-        setFace(rollD20());
+        if (rollToken.current !== token) return;
+        setSpin(rollD20());
         await wait(45 + i * 18);
       }
     }
+    if (rollToken.current !== token) return;
+    setSpin(null);
+    committed.current = final;
     setFace(final);
     setRolling(false);
     if (prefs.sound) playDiceSound(final);
@@ -93,12 +113,23 @@ export function Table() {
 
   async function submit() {
     const text = draft.trim();
-    if (!text || busy) return;
-    const dice = face ? { natural: face, stat: stat || null } : null;
-    const ok = await send(text, dice);
-    if (ok) {
-      setDraft("");
-      setFace(null);
+    if (!text || busy || submitting.current) return;
+    submitting.current = true;
+    try {
+      if (rolling) {
+        const token = rollToken.current;
+        while (rollToken.current === token && committed.current === null) await wait(40);
+        if (rollToken.current !== token || committed.current === null) return;
+      }
+      const natural = committed.current;
+      const dice = natural ? { natural, stat: stat || null } : null;
+      const ok = await send(text, dice);
+      if (ok) {
+        setDraft("");
+        clearRoll();
+      }
+    } finally {
+      submitting.current = false;
     }
   }
 
@@ -121,18 +152,18 @@ export function Table() {
           <div className="bar" aria-label={`Deneyim ${character.xp}`}>
             <span className="fill fill-xp" style={{ width: `${Math.min(100, xpPct)}%` }} />
           </div>
-          {game.settings.magic ? (
+          {game.settings.magic && character.maxMana > 0 ? (
             <div className="bar" aria-label={`Mana ${character.mana}`}>
               <span className="fill fill-mana" style={{ width: `${manaPct}%` }} />
             </div>
           ) : null}
         </div>
         <div className="hud-meta">
-          <span>Can {character.hp}/{character.maxHp}{game.settings.magic ? ` · Mana ${character.mana}/${character.maxMana}` : ""}</span>
+          <span>Can {character.hp}/{character.maxHp}{game.settings.magic && character.maxMana > 0 ? ` · Mana ${character.mana}/${character.maxMana}` : ""}</span>
           <span>{character.gold} {game.settings.currency}</span>
         </div>
         <div className="hud-meta">
-          <span>XP {character.xp}/{xpThreshold(character.level)} · ZS {character.ac}</span>
+          <span>XP {character.xp}/{xpThreshold(character.level)} · Zırh {character.ac}</span>
           <span>{formatWorldTime(game.worldTime)}</span>
         </div>
         <div className="meta">{STAT_KEYS.map((key) => `${STAT_SHORT[key]} ${character.stats[key]}`).join(" · ")}</div>
@@ -187,17 +218,17 @@ export function Table() {
               {STAT_KEYS.map((key) => <option key={key} value={key}>{STAT_SHORT[key]} {modifier(character.stats[key]) >= 0 ? "+" : ""}{modifier(character.stats[key])}</option>)}
             </select>
           </label>
-          {face ? <span className="pending">d20 {face}{stat ? ` ${mod >= 0 ? "+" : ""}${mod} = ${face + mod}` : ""} <button type="button" onClick={() => setFace(null)}>sil</button></span> : <span className="faint">Riskliyse zar at.</span>}
+          {shownFace ? <span className="pending">d20 {shownFace}{!spin && stat ? ` ${mod >= 0 ? "+" : ""}${mod} = ${shownFace + mod}` : ""} <button type="button" onClick={clearRoll}>sil</button></span> : <span className="faint">Riskliyse zar at.</span>}
         </div>
         <button
           type="button"
-          className={`dice ${rolling ? "dice-rolling" : ""} ${face === 20 ? "dice-crit" : ""} ${face === 1 ? "dice-fail" : ""}`}
+          className={`dice ${rolling ? "dice-rolling" : ""} ${!spin && face === 20 ? "dice-crit" : ""} ${!spin && face === 1 ? "dice-fail" : ""}`}
           data-testid="dice"
           onClick={() => void roll()}
           disabled={busy}
           aria-label="d20 at"
         >
-          {face ?? "d20"}
+          {shownFace ?? "d20"}
         </button>
         <textarea
           data-testid="composer"

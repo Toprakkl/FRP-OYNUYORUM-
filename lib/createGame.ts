@@ -54,8 +54,9 @@ function materialize(seed: ItemSeed, magic: boolean): Item {
 
 function withRace(text: string, race: string): string {
   const clean = race.trim();
-  if (!clean || /^insan$/i.test(clean)) return text;
-  return text.replace(/\.\s/, `. ${clean} oluşun burada bir bakış fazla tutuyor. `);
+  const key = clean.toLocaleLowerCase("tr");
+  if (!clean || key === "insan" || key === "yerel") return text;
+  return text.replace(/\.\s/, `. ${clean} olduğun göze çarpıyor. `);
 }
 
 export function createGame(input: NewGameInput): Game {
