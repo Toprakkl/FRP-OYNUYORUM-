@@ -8,18 +8,17 @@ import { useGame } from "./GameApp";
 import { Panel } from "./Panels";
 import { playDiceSound } from "./sound";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "character", label: "Karakter" },
-  { id: "inventory", label: "Envanter" },
-  { id: "quests", label: "Görevler" },
-  { id: "world", label: "Dünya" },
-  { id: "log", label: "Günlük" },
-  { id: "settings", label: "Ayarlar" },
+const TABS: { id: TabId; label: string; mark: string }[] = [
+  { id: "character", label: "Karakter", mark: "◆" },
+  { id: "inventory", label: "Envanter", mark: "▣" },
+  { id: "quests", label: "Görevler", mark: "⚑" },
+  { id: "world", label: "Dünya", mark: "◎" },
 ];
 
 export function Table() {
   const { game, send, busy, error, clearError, setScreen, prefs, commands } = useGame();
   const [tab, setTab] = useState<TabId | null>(null);
+  const [more, setMore] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [draft, setDraft] = useState("");
   const [reveal, setReveal] = useState<DiceResolved | null>(null);
@@ -171,12 +170,20 @@ export function Table() {
         ) : null}
         <div className="tabs">
           {TABS.map((entry) => (
-            <button key={entry.id} className={`tab ${shown === entry.id ? "on" : ""}`} onClick={() => setTab((current) => (!desktop && current === entry.id ? null : entry.id))}>
+            <button key={entry.id} className={`tab menu-tab ${shown === entry.id ? "on" : ""}`} onClick={() => { setMore(false); setTab((current) => (!desktop && current === entry.id ? null : entry.id)); }}>
+              <span aria-hidden="true">{entry.mark}</span>
               {entry.label}
             </button>
           ))}
-          <button className="tab" onClick={() => setScreen("home")}>Masalar</button>
+          <button className={`tab menu-tab ${more ? "on" : ""}`} onClick={() => setMore((value) => !value)} aria-label="Diğer">⋯</button>
         </div>
+        {more ? (
+          <div className="more-menu">
+            <button className="tab" onClick={() => { setMore(false); setTab("log"); }}>Günlük</button>
+            <button className="tab" onClick={() => { setMore(false); setTab("settings"); }}>Ayarlar</button>
+            <button className="tab" onClick={() => { setMore(false); setScreen("home"); }}>Masalar</button>
+          </div>
+        ) : null}
       </header>
       {error ? <div className="toast">{error} <button onClick={clearError}>Kapat</button></div> : null}
       {!character.isAlive ? (
@@ -221,7 +228,7 @@ export function Table() {
         <button className="primary send" data-testid="send" disabled={busy || Boolean(reveal) || !draft.trim()}>Gönder</button>
       </form>
       <aside className={`panel ${shown ? "open" : ""}`}>
-        {shown ? <Panel tab={shown} onClose={() => setTab(null)} desktop={desktop} /> : null}
+        {shown ? <Panel tab={shown} onClose={() => setTab(null)} desktop={desktop} onJump={(next) => setTab(next)} /> : null}
       </aside>
       {reveal ? (
         <div className="theater" data-testid="theater">

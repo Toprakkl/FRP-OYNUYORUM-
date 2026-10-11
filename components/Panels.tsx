@@ -1,33 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { carryCapacity, carriedWeight } from "@/lib/applyCommands";
 import { getPack, PACKS } from "@/lib/campaigns";
 import { DEFAULT_MODEL } from "@/lib/storage";
 import { modifier } from "@/lib/dice";
-import { formatWorldTime, xpThreshold } from "@/lib/format";
+import { xpThreshold } from "@/lib/format";
 import {
   DIFFICULTY_LABEL,
   GENRE_LABEL,
-  ITEM_LABEL,
-  ITEM_TYPES,
-  LORE_LABEL,
-  RARITIES,
-  RARITY_LABEL,
-  SLOT_LABEL,
-  SLOTS,
   STAT_KEYS,
   STAT_LABEL,
   STAT_SHORT,
   THEME_LABEL,
   TONE_LABEL,
-  type Item,
-  type ItemType,
-  type LoreKind,
-  type Rarity,
-  type Slot,
   type TabId,
 } from "@/lib/types";
+import { InventoryMenu, PaperDoll, QuestMenu, WorldMenu } from "./menus";
 import { useGame } from "./GameApp";
 import { compressImage } from "./imageFile";
 
@@ -38,18 +26,20 @@ const MODELS = [
   ["gemini-3.1-pro-preview", "Gemini 3.1 Pro"],
 ];
 
-export function Panel({ tab, onClose, desktop }: { tab: TabId; onClose: () => void; desktop: boolean }) {
+export function Panel({ tab, onClose, desktop, onJump }: { tab: TabId; onClose: () => void; desktop: boolean; onJump?: (tab: TabId) => void }) {
+  const title = tab === "character" ? "Karakter" : tab === "inventory" ? "Envanter" : tab === "quests" ? "Görevler" : tab === "world" ? "Dünya" : tab === "log" ? "Günlük" : "Ayarlar";
   return (
     <>
+      <div className="sheet-handle" aria-hidden="true" />
       <div className="panel-head">
-        <h3>{tab === "character" ? "Karakter" : tab === "inventory" ? "Envanter" : tab === "quests" ? "Görevler" : tab === "world" ? "Dünya" : tab === "log" ? "Günlük" : "Ayarlar"}</h3>
-        {desktop ? null : <button onClick={onClose}>Kapat</button>}
+        <h3>{title}</h3>
+        {desktop ? null : <button onClick={onClose} aria-label="Kapat">Kapat</button>}
       </div>
       <div className="panel-body">
-        {tab === "character" ? <CharacterPanel /> : null}
-        {tab === "inventory" ? <InventoryPanel /> : null}
-        {tab === "quests" ? <QuestPanel /> : null}
-        {tab === "world" ? <WorldPanel /> : null}
+        {tab === "character" ? <CharacterPanel onJump={onJump} /> : null}
+        {tab === "inventory" ? <InventoryMenu /> : null}
+        {tab === "quests" ? <QuestMenu /> : null}
+        {tab === "world" ? <WorldMenu /> : null}
         {tab === "log" ? <LogPanel /> : null}
         {tab === "settings" ? <SettingsPanel /> : null}
       </div>
@@ -57,23 +47,21 @@ export function Panel({ tab, onClose, desktop }: { tab: TabId; onClose: () => vo
   );
 }
 
-function CharacterPanel() {
+function CharacterPanel({ onJump }: { onJump?: (tab: TabId) => void }) {
   const { game, commands, patchMeta } = useGame();
   if (!game) return null;
   const character = game.character;
   const hpPct = Math.round((character.hp / Math.max(1, character.maxHp)) * 100);
+  const ready = character.xp >= xpThreshold(character.level) && character.level < 20;
   return (
     <>
-      <div className="sheet-hero">
-        <div className="portrait portrait-lg">
-          {character.portraitDataUrl ? <img src={character.portraitDataUrl} alt="" /> : character.name.slice(0, 1).toLocaleUpperCase("tr")}
-        </div>
-        <div>
-          <h2 className="sheet-name">{character.name}</h2>
-          <p className="meta">{character.className} · Seviye {character.level}</p>
-          <p className="meta">{character.race || "Köken yok"} · Zırh {character.ac}</p>
-        </div>
+      <div className="sheet-id">
+        <h2 className="sheet-name">{character.name}</h2>
+        <p className="meta">{character.className} · {character.race || "Köken yok"} · Zırh {character.ac}</p>
       </div>
+      {ready ? <button className="level-glow" onClick={() => commands([{ type: "level_up" }], "Seviye")}>Seviye atla</button> : null}
+      {character.statPoints > 0 ? <p className="level-glow">Dağıtılacak puan {character.statPoints}</p> : null}
+      <PaperDoll onBrowse={() => onJump?.("inventory")} />
       <div className="sheet-vitals">
         <div className="hp-orb hp-orb-lg" data-low={hpPct < 35}>
           <strong>{character.hp}</strong>
@@ -199,262 +187,6 @@ function SpellEditor() {
         <button onClick={() => { if (!name.trim()) return; commands([{ type: "spell_learn", name: name.trim() }], "Büyü"); setName(""); }}>Öğren</button>
       </div>
     </div>
-  );
-}
-
-function InventoryPanel() {
-  const { game, commands } = useGame();
-  const [filter, setFilter] = useState<"all" | ItemType>("all");
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  if (!game) return null;
-  const cap = carryCapacity(game.character.stats.str);
-  const weight = carriedWeight(game.inventory);
-  const items = game.inventory.filter((item) => {
-    if (!game.settings.magic && item.magical) return false;
-    if (filter !== "all" && item.type !== filter) return false;
-    if (query && !item.name.toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr"))) return false;
-    return true;
-  });
-  return (
-    <>
-      <div>
-        <div className="bar"><span className="fill fill-xp" data-low={weight > cap} style={{ width: `${Math.min(100, (weight / cap) * 100)}%` }} /></div>
-        <p className="meta">Yük {weight.toFixed(1)} / {cap} · {game.character.gold} {game.settings.currency}</p>
-      </div>
-      <div className="doll">
-        {SLOTS.map((slot) => {
-          const item = game.inventory.find((entry) => entry.equippedSlot === slot);
-          return (
-            <button key={slot} className="slot" onClick={() => item && commands([{ type: "item_unequip", slot }], "Çıkar")}>
-              <small>{SLOT_LABEL[slot]}</small>
-              {item ? item.name : "—"}
-            </button>
-          );
-        })}
-      </div>
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Eşya ara" />
-      <div className="chips">
-        <button className={`chip ${filter === "all" ? "on" : ""}`} onClick={() => setFilter("all")}>Tümü</button>
-        {ITEM_TYPES.map((type) => (
-          <button key={type} className={`chip ${filter === type ? "on" : ""}`} onClick={() => setFilter(type)}>{ITEM_LABEL[type]}</button>
-        ))}
-      </div>
-      {items.map((item) => (
-        <article key={item.id} className={`item rarity-${item.rarity}`}>
-          <button onClick={() => setOpen(open === item.id ? null : item.id)}>
-            <strong>{item.name}</strong> ×{item.qty}
-            <span className="meta"> {RARITY_LABEL[item.rarity]} · {ITEM_LABEL[item.type]} · {item.weight} yük</span>
-          </button>
-          {open === item.id ? <ItemDetail item={item} /> : null}
-        </article>
-      ))}
-      <button onClick={() => setAdding((value) => !value)}>{adding ? "Vazgeç" : "Eşya ekle"}</button>
-      {adding ? <AddItem onDone={() => setAdding(false)} /> : null}
-    </>
-  );
-}
-
-function ItemDetail({ item }: { item: Item }) {
-  const { commands, game } = useGame();
-  if (!game) return null;
-  const canEquip = !["consumable", "material", "quest", "key", "book"].includes(item.type);
-  return (
-    <div className="detail">
-      <p>{item.description || "Açıklama yok."}</p>
-      {item.lore ? <p className="meta">{item.lore}</p> : null}
-      <p className="meta">
-        {item.props.damage ? `Hasar ${item.props.damage} ` : ""}
-        {item.props.ac ? `Zırh +${item.props.ac} ` : ""}
-        {item.props.heal ? `İyileştirir ${item.props.heal} ` : ""}
-        Değer {item.value} {game.settings.currency}
-      </p>
-      <div className="row">
-        {canEquip ? (
-          item.equippedSlot ? (
-            <button onClick={() => commands([{ type: "item_unequip", slot: item.equippedSlot as Slot }], "Çıkar")}>Çıkar</button>
-          ) : (
-            <button onClick={() => commands([{ type: "item_equip", name: item.name, id: item.id }], "Kuşan")}>Kuşan</button>
-          )
-        ) : null}
-        {item.props.heal || item.props.healMana ? (
-          <button onClick={() => {
-            const list = [];
-            if (item.props.heal) list.push({ type: "hp" as const, delta: item.props.heal });
-            if (item.props.healMana && game.settings.magic) list.push({ type: "mana" as const, delta: item.props.healMana });
-            list.push({ type: "item_remove" as const, name: item.name, id: item.id, qty: 1 });
-            commands(list, "Kullan");
-          }}>Kullan</button>
-        ) : null}
-        <button className="danger" onClick={() => commands([{ type: "item_remove", name: item.name, id: item.id, qty: 1 }], "At")}>At</button>
-      </div>
-    </div>
-  );
-}
-
-function AddItem({ onDone }: { onDone: () => void }) {
-  const { commands } = useGame();
-  const [name, setName] = useState("");
-  const [itemType, setItemType] = useState<ItemType>("misc");
-  const [rarity, setRarity] = useState<Rarity>("common");
-  const [description, setDescription] = useState("");
-  const [weight, setWeight] = useState(0.2);
-  return (
-    <div className="stack">
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ad" />
-      <div className="grid-2">
-        <select value={itemType} onChange={(event) => setItemType(event.target.value as ItemType)}>
-          {ITEM_TYPES.map((type) => <option key={type} value={type}>{ITEM_LABEL[type]}</option>)}
-        </select>
-        <select value={rarity} onChange={(event) => setRarity(event.target.value as Rarity)}>
-          {RARITIES.map((entry) => <option key={entry} value={entry}>{RARITY_LABEL[entry]}</option>)}
-        </select>
-      </div>
-      <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Kısa açıklama" />
-      <input type="number" step="0.1" value={weight} onChange={(event) => setWeight(Number(event.target.value))} />
-      <button
-        className="primary"
-        onClick={() => {
-          if (!name.trim()) return;
-          commands([{
-            type: "item_add",
-            item: {
-              name: name.trim(),
-              qty: 1,
-              itemType,
-              subtype: "",
-              description,
-              lore: "",
-              rarity,
-              weight,
-              value: 0,
-              slot: null,
-              magical: false,
-              stackable: itemType === "consumable" || itemType === "material",
-            },
-          }], "Eşya");
-          onDone();
-        }}
-      >Kaydet</button>
-    </div>
-  );
-}
-
-function QuestPanel() {
-  const { game, commands, deleteQuest, setObjective } = useGame();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  if (!game) return null;
-  return (
-    <>
-      {game.quests.map((quest) => (
-        <article key={quest.id} className="quest">
-          <h3>{quest.title}</h3>
-          <p className="meta">{quest.status === "active" ? "Açık" : quest.status === "completed" ? "Bitti" : "Boşa düştü"}</p>
-          <p>{quest.description}</p>
-          {quest.objectives.map((objective, index) => (
-            <label key={objective.text} className="check">
-              <input type="checkbox" checked={objective.done} onChange={(event) => setObjective(quest.id, index, event.target.checked)} />
-              <span>{objective.text}</span>
-            </label>
-          ))}
-          {quest.reward ? <p className="meta">Ödül: {quest.reward}</p> : null}
-          <div className="row">
-            {quest.status !== "completed" ? <button onClick={() => commands([{ type: "quest_update", title: quest.title, status: "completed" }], "Görev")}>Bitir</button> : null}
-            {quest.status !== "failed" ? <button onClick={() => commands([{ type: "quest_update", title: quest.title, status: "failed" }], "Görev")}>Bırak</button> : null}
-            <button className="danger" onClick={() => deleteQuest(quest.id)}>Sil</button>
-          </div>
-        </article>
-      ))}
-      <div className="stack">
-        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Yeni görev" />
-        <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Ne isteniyor?" />
-        <button onClick={() => {
-          if (!title.trim()) return;
-          commands([{ type: "quest_add", title: title.trim(), description, objectives: [], reward: "" }], "Görev");
-          setTitle("");
-          setDescription("");
-        }}>Görev ekle</button>
-      </div>
-    </>
-  );
-}
-
-function WorldPanel() {
-  const { game, commands, addLore, updateLore, deleteLore } = useGame();
-  const [kind, setKind] = useState<LoreKind>("location");
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [secret, setSecret] = useState(false);
-  const [always, setAlways] = useState(false);
-  if (!game) return null;
-  const missing = Math.max(0, game.character.maxHp - game.character.hp);
-  return (
-    <>
-      <p>{formatWorldTime(game.worldTime)} · {game.location}</p>
-      <BlurText label="Konum" value={game.location} onCommit={(name) => commands([{ type: "location_set", name }], "Konum")} />
-      <div className="row">
-        <button onClick={() => commands([{ type: "time", delta_hours: -1 }], "Saat")}>-1 saat</button>
-        <button onClick={() => commands([{ type: "time", delta_hours: 1 }], "Saat")}>+1 saat</button>
-        <button onClick={() => commands([
-          { type: "time", delta_hours: 8 },
-          ...(missing ? [{ type: "hp" as const, delta: Math.max(1, Math.ceil(missing * 0.5)) }] : []),
-          { type: "condition_remove", name: "yorgun" },
-        ], "Kamp")}>Kamp kur</button>
-      </div>
-      <h3>Kişiler</h3>
-      {game.npcs.map((npc) => (
-        <article key={npc.id} className="npc">
-          <strong>{npc.name}</strong>
-          <p className="meta">Tutum {npc.attitude} · {npc.status === "alive" ? "sağ" : npc.status === "dead" ? "ölü" : "kayıp"} · {npc.location}</p>
-          {npc.notes ? <p>{npc.notes}</p> : null}
-        </article>
-      ))}
-      <h3>Dünya kitabı</h3>
-      <p className="faint">Her zaman dahil olanlar her tur hakeme gider. GM'e özel notlar sende görünür, anlatımda açıkça söylenmez.</p>
-      {game.lore.map((entry) => (
-        <LoreCard key={entry.id} title={entry.title} content={entry.content} kind={entry.kind} secret={entry.visibility === "ai_only"} always={entry.alwaysInclude} onSave={(partial) => updateLore(entry.id, partial)} onDelete={() => deleteLore(entry.id)} />
-      ))}
-      <div className="stack">
-        <select value={kind} onChange={(event) => setKind(event.target.value as LoreKind)}>
-          {(Object.keys(LORE_LABEL) as LoreKind[]).map((entry) => <option key={entry} value={entry}>{LORE_LABEL[entry]}</option>)}
-        </select>
-        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Başlık" />
-        <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Uzun not" />
-        <label className="check"><input type="checkbox" checked={always} onChange={(event) => setAlways(event.target.checked)} /> Her tur hakeme git</label>
-        <label className="check"><input type="checkbox" checked={secret} onChange={(event) => setSecret(event.target.checked)} /> Yalnız hakem bilsin</label>
-        <button onClick={() => {
-          if (!title.trim() || !content.trim()) return;
-          addLore({ kind, title: title.trim(), content: content.trim(), tags: [], visibility: secret ? "ai_only" : "player_visible", alwaysInclude: always });
-          setTitle("");
-          setContent("");
-        }}>Nota ekle</button>
-      </div>
-    </>
-  );
-}
-
-function LoreCard({ title, content, kind, secret, always, onSave, onDelete }: { title: string; content: string; kind: LoreKind; secret: boolean; always: boolean; onSave: (partial: { title?: string; content?: string; alwaysInclude?: boolean; visibility?: "ai_only" | "player_visible" }) => void; onDelete: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(content);
-  useEffect(() => setDraft(content), [content]);
-  return (
-    <article className="lore">
-      <button onClick={() => setOpen((value) => !value)}>
-        <strong>{title}</strong>
-        <span className="meta"> {LORE_LABEL[kind]}{always ? " · her tur" : ""}{secret ? " · yalnız hakem" : ""}</span>
-      </button>
-      {open ? (
-        <div className="stack">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} />
-          <div className="row">
-            <button onClick={() => onSave({ content: draft })}>Kaydet</button>
-            <button className="danger" onClick={onDelete}>Sil</button>
-          </div>
-        </div>
-      ) : null}
-    </article>
   );
 }
 
