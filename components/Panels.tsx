@@ -253,7 +253,7 @@ function SettingsPanel() {
           setPing(data.ok ? (data.busy ? "Anahtar duruyor. Seçili model şu an yoğun. Biraz sonra yine dene ya da listeden başka model seç." : local ? "Anahtar çalışıyor. Turlar hâlâ yerel anlatıcıda. Gemini düğmesine bas." : "Anahtar çalışıyor. Turları Gemini yazar.") : data.error || "Olmadı");
         }}>Anahtarı dene</button>
       </div>
-      {ping ? <p>{ping}</p> : null}
+      {ping ? <p className="faint">{ping}</p> : null}
       <label className="field">
         Model
         <select data-testid="model-select" value={MODELS.some((entry) => entry[0] === prefs.model) ? prefs.model : "custom"} onChange={(event) => { if (event.target.value !== "custom") setPrefs({ model: event.target.value }); }}>
@@ -269,30 +269,31 @@ function SettingsPanel() {
         <button className={`chip ${prefs.narrator === "yerel" ? "on" : ""}`} onClick={() => setPrefs({ narrator: "yerel" })}>Yerel anlatıcı</button>
         <button className={`chip ${prefs.sound ? "on" : ""}`} onClick={() => setPrefs({ sound: !prefs.sound })}>{prefs.sound ? "Zar sesi açık" : "Zar sesi kapalı"}</button>
       </div>
-      <p className="faint">Sohbet üyeliği yetmez. Anahtar: aistudio.google.com/apikey</p>
-      {prefs.narrator === "yerel" && (prefs.apiKey || serverKey) ? <p className="faint">Yerel anlatıcı seçili. Anahtar duruyor ama sahneleri o yazmıyor. Gemini düğmesine bas.</p> : null}
-      <label className="field">
-        Tür
-        <select value={game.settings.genre} onChange={(event) => setSettings({ genre: event.target.value as typeof game.settings.genre })}>
-          {PACKS.map((entry) => <option key={entry.id} value={entry.id}>{GENRE_LABEL[entry.id]}</option>)}
-        </select>
-      </label>
-      {game.settings.genre === "ozel" ? <BlurText label="Dünya tanımı" value={game.settings.customGenre} onCommit={(customGenre) => setSettings({ customGenre })} /> : null}
-      <label className="field">
-        Tema
-        <select value={game.settings.theme} onChange={(event) => setSettings({ theme: event.target.value as typeof game.settings.theme })}>
-          {(Object.keys(THEME_LABEL) as (keyof typeof THEME_LABEL)[]).map((theme) => <option key={theme} value={theme}>{THEME_LABEL[theme]}</option>)}
-        </select>
-      </label>
-      <div className="chips">
+      <div className="split-fields">
+        <label className="field">
+          Tür
+          <select data-testid="genre-select" value={game.settings.genre} onChange={(event) => setSettings({ genre: event.target.value as typeof game.settings.genre })}>
+            {PACKS.map((entry) => <option key={entry.id} value={entry.id}>{GENRE_LABEL[entry.id]}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          Tema
+          <select data-testid="theme-select" value={game.settings.theme} onChange={(event) => setSettings({ theme: event.target.value as typeof game.settings.theme })}>
+            {(Object.keys(THEME_LABEL) as (keyof typeof THEME_LABEL)[]).map((theme) => <option key={theme} value={theme}>{THEME_LABEL[theme]}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="chips" data-testid="difficulty-chips">
         {(Object.keys(DIFFICULTY_LABEL) as (keyof typeof DIFFICULTY_LABEL)[]).map((difficulty) => (
           <button key={difficulty} className={`chip ${game.settings.difficulty === difficulty ? "on" : ""}`} onClick={() => setSettings({ difficulty })}>{DIFFICULTY_LABEL[difficulty]}</button>
         ))}
+      </div>
+      <div className="chips" data-testid="tone-chips">
         {(Object.keys(TONE_LABEL) as (keyof typeof TONE_LABEL)[]).map((tone) => (
           <button key={tone} className={`chip ${game.settings.tone === tone ? "on" : ""}`} onClick={() => setSettings({ tone })}>{TONE_LABEL[tone]}</button>
         ))}
       </div>
-      <div className="chips">
+      <div className="chips" data-testid="rule-chips">
         <button className={`chip ${game.settings.magic ? "on" : ""}`} onClick={() => setSettings({ magic: !game.settings.magic })}>{game.settings.magic ? "Büyü açık" : "Büyü kapalı"}</button>
         <button className={`chip ${game.settings.realism ? "on" : ""}`} onClick={() => setSettings({ realism: !game.settings.realism })}>{game.settings.realism ? "Gerçekçilik açık" : "Gerçekçilik kapalı"}</button>
         <button
@@ -312,10 +313,15 @@ function SettingsPanel() {
           }}
         >{game.settings.adult ? "+18 açık" : "+18 kapalı"}</button>
       </div>
-      <BlurText label="Ev kuralları" value={game.settings.customRules} area onCommit={(customRules) => setSettings({ customRules })} />
-      <BlurText label="Para birimi" value={game.settings.currency || pack.currency} onCommit={(currency) => setSettings({ currency })} />
-      <button onClick={() => exportGame(game.id)}>Macerayı indir</button>
-      <p className="faint">Kayıt bu tarayıcıda durur. Telefonla bilgisayar arasında dosyayı taşı. Anahtar dosyaya yazılmaz.</p>
+      <div className="settings-more">
+        <p className="faint">Sohbet üyeliği yetmez. Anahtar: aistudio.google.com/apikey</p>
+        {prefs.narrator === "yerel" && (prefs.apiKey || serverKey) ? <p className="faint">Yerel anlatıcı seçili. Anahtar duruyor ama sahneleri o yazmıyor. Gemini düğmesine bas.</p> : null}
+        {game.settings.genre === "ozel" ? <BlurText label="Dünya tanımı" value={game.settings.customGenre} onCommit={(customGenre) => setSettings({ customGenre })} /> : null}
+        <BlurText label="Ev kuralları" value={game.settings.customRules} area onCommit={(customRules) => setSettings({ customRules })} />
+        <BlurText label="Para birimi" value={game.settings.currency || pack.currency} onCommit={(currency) => setSettings({ currency })} />
+        <button onClick={() => exportGame(game.id)}>Macerayı indir</button>
+        <p className="faint">Kayıt bu tarayıcıda durur. Telefonla bilgisayar arasında dosyayı taşı. Anahtar dosyaya yazılmaz.</p>
+      </div>
     </div>
   );
 }
