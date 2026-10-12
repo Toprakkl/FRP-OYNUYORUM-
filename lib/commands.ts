@@ -1,6 +1,7 @@
-import type { GameSettings, ItemType, Rarity, Slot, StatKey } from "./types";
-import { ITEM_TYPES, RARITIES, SLOTS, STAT_KEYS } from "./types";
+import type { GameSettings, ItemType, KingdomStat, Rarity, Slot, StatKey } from "./types";
+import { ITEM_TYPES, KINGDOM_STATS, RARITIES, SLOTS, STAT_KEYS } from "./types";
 import { clamp } from "./format";
+import { ADVISOR_ROLES, BUILDINGS, PROFESSIONS, WEATHERS } from "./veyraLife";
 
 export type Source = "ai" | "manual" | "system";
 
@@ -68,6 +69,21 @@ export type Command =
   | { type: "guild_promote" }
   | { type: "talent_unlock"; id: string }
   | { type: "oath_set"; name: string }
+  | { type: "profession_set"; slot: "main" | "side"; name: string }
+  | { type: "profession_mp"; slot: "main" | "side"; delta: number }
+  | { type: "season_advance"; event: number }
+  | { type: "kingdom_choice"; index: 0 | 1 }
+  | { type: "kingdom_found"; name: string }
+  | { type: "kingdom_upgrade" }
+  | { type: "kingdom_stat"; stat: KingdomStat; delta: number }
+  | { type: "building_add"; name: string }
+  | { type: "advisor_set"; role: string; name: string }
+  | { type: "advisor_loyalty"; who: string; delta: number }
+  | { type: "companion_touch"; name: string; delta: number; note?: string }
+  | { type: "bond"; name: string; delta: number }
+  | { type: "weather_set"; name: string }
+  | { type: "fatigue"; delta: number }
+  | { type: "home_set"; tier: number }
   | { type: "journal_add"; text: string }
   | { type: "set_alive"; value: boolean };
 
@@ -87,7 +103,43 @@ const AI_FORBIDDEN = new Set([
   "talent_unlock",
   "oath_set",
   "level_up",
+  "season_advance",
+  "kingdom_choice",
+  "kingdom_found",
+  "kingdom_upgrade",
+  "building_add",
+  "advisor_set",
+  "profession_set",
+  "home_set",
 ]);
+
+const LIFE = new Set([
+  "profession_set",
+  "profession_mp",
+  "season_advance",
+  "kingdom_choice",
+  "kingdom_found",
+  "kingdom_upgrade",
+  "kingdom_stat",
+  "building_add",
+  "advisor_set",
+  "advisor_loyalty",
+  "companion_touch",
+  "bond",
+  "weather_set",
+  "fatigue",
+  "home_set",
+]);
+
+const KINGDOM_AI: Record<KingdomStat, [number, number, number, number]> = {
+  treasury: [-500, 500, -1000000, 1000000],
+  army: [-50, 50, -100000, 100000],
+  people: [-15, 15, -100, 100],
+  stability: [-15, 15, -100, 100],
+  influence: [-15, 15, -100, 100],
+  legitimacy: [-15, 15, -100, 100],
+  population: [-20, 30, -100000, 1000000],
+};
 
 const TYPE_ALIAS: Record<string, ItemType> = {
   weapon: "weapon",
@@ -230,6 +282,7 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
   if (type === "item_create") type = "item_add";
   if (!type) return { ok: false, reason: "Komut tipi yok" };
   if (source === "ai" && AI_FORBIDDEN.has(type)) return { ok: false, reason: `${type} yalnızca elle kullanılır` };
+  if (LIFE.has(type) && settings.genre !== "veyra") return { ok: false, reason: "Bu masa Veyra değil" };
 
   const magicBlocked = !settings.magic && (type === "mana" || type === "set_mana" || type === "set_max_mana" || type === "spell_learn");
   if (magicBlocked) return { ok: false, reason: "Büyü kapalı" };
@@ -482,6 +535,104 @@ export function sanitizeCommand(raw: unknown, source: Source, settings: GameSett
       const name = text(row.name, 40);
       if (!name) return { ok: false, reason: "Yemin adı yok" };
       return { ok: true, command: { type: "oath_set", name } };
+    }
+    case "profession_set": {
+      const slot = row.slot === "side" ? "side" : row.slot === "main" ? "main" : null;
+      if (!slot) return { ok: false, reason: "Meslek yuvası yok" };
+      const rawName = text(row.name, 40) ?? "";
+      if (!rawName) return { ok: true, command: { type: "profession_set", slot, name: "" } };
+      const known = PROFESSIONS.find((job) => job.name.toLocaleLowerCase("tr") === rawName.toLocaleLowerCase("tr"));
+      if (!known) return { ok: false, reason: "Meslek yok" };
+      return { ok: true, command: { type: "profession_set", slot, name: known.name } };
+    }
+    case "profession_mp": {
+      const slot = row.slot === "side" ? "side" : row.slot === "main" ? "main" : null;
+      const delta = int(row.delta);
+      if (!slot || delta === null || delta === 0) return { ok: false, reason: "Meslek puanı değişmedi" };
+      const checked = limit(delta, 0, 2, source, -50, 50, "Meslek puanı");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "profession_mp", slot, delta: checked } };
+    }
+    case "season_advance": {
+      const event = int(row.event ?? row.roll);
+      if (event === null || event < 1 || event > 20) return { ok: false, reason: "Olay zarı yok" };
+      return { ok: true, command: { type: "season_advance", event } };
+    }
+    case "kingdom_choice": {
+      const index = int(row.index);
+      if (index !== 0 && index !== 1) return { ok: false, reason: "Karar yok" };
+      return { ok: true, command: { type: "kingdom_choice", index } };
+    }
+    case "kingdom_found": {
+      const name = text(row.name, 40);
+      if (!name) return { ok: false, reason: "Yerleşim adı yok" };
+      return { ok: true, command: { type: "kingdom_found", name } };
+    }
+    case "kingdom_upgrade":
+      return { ok: true, command: { type: "kingdom_upgrade" } };
+    case "kingdom_stat": {
+      const stat = typeof row.stat === "string" ? KINGDOM_STATS.find((key) => key === row.stat) : undefined;
+      const delta = int(row.delta);
+      if (!stat || delta === null || delta === 0) return { ok: false, reason: "Yerleşim değişmedi" };
+      const [min, max, hardMin, hardMax] = KINGDOM_AI[stat];
+      const checked = limit(delta, min, max, source, hardMin, hardMax, "Yerleşim");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "kingdom_stat", stat, delta: checked } };
+    }
+    case "building_add": {
+      const rawName = text(row.name, 40);
+      const known = BUILDINGS.find((building) => building.name.toLocaleLowerCase("tr") === (rawName ?? "").toLocaleLowerCase("tr"));
+      if (!known) return { ok: false, reason: "Bina yok" };
+      return { ok: true, command: { type: "building_add", name: known.name } };
+    }
+    case "advisor_set": {
+      const rawRole = text(row.role, 40);
+      const known = ADVISOR_ROLES.find((advisor) => advisor.role.toLocaleLowerCase("tr") === (rawRole ?? "").toLocaleLowerCase("tr"));
+      const name = text(row.name, 40);
+      if (!known || !name) return { ok: false, reason: "Danışman eksik" };
+      return { ok: true, command: { type: "advisor_set", role: known.role, name } };
+    }
+    case "advisor_loyalty": {
+      const who = text(row.who ?? row.role ?? row.name, 40);
+      const delta = int(row.delta);
+      if (!who || delta === null || delta === 0) return { ok: false, reason: "Sadakat değişmedi" };
+      const checked = limit(delta, -20, 20, source, -100, 100, "Sadakat");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "advisor_loyalty", who, delta: checked } };
+    }
+    case "companion_touch": {
+      const name = text(row.name, 40);
+      if (!name) return { ok: false, reason: "Yoldaş adı yok" };
+      const delta = int(row.delta, 0) ?? 0;
+      const checked = limit(delta, -20, 20, source, -100, 100, "Sadakat");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "companion_touch", name, delta: checked, note: text(row.note ?? row.notes, 160) ?? undefined } };
+    }
+    case "bond": {
+      const name = text(row.name, 60);
+      const delta = int(row.delta);
+      if (!name || delta === null || delta === 0) return { ok: false, reason: "Bağ değişmedi" };
+      const checked = limit(delta, -20, 20, source, -100, 100, "Bağ");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "bond", name, delta: checked } };
+    }
+    case "weather_set": {
+      const rawName = text(row.name, 40);
+      const known = WEATHERS.find((weather) => weather.toLocaleLowerCase("tr") === (rawName ?? "").toLocaleLowerCase("tr"));
+      if (!known) return { ok: false, reason: "Hava yok" };
+      return { ok: true, command: { type: "weather_set", name: known } };
+    }
+    case "fatigue": {
+      const delta = int(row.delta);
+      if (delta === null || delta === 0) return { ok: false, reason: "Yorgunluk değişmedi" };
+      const checked = limit(delta, -1, 2, source, -5, 5, "Yorgunluk");
+      if (typeof checked !== "number") return checked;
+      return { ok: true, command: { type: "fatigue", delta: checked } };
+    }
+    case "home_set": {
+      const tier = int(row.tier ?? row.value);
+      if (tier === null || tier < 1 || tier > 5) return { ok: false, reason: "Konut kademesi yok" };
+      return { ok: true, command: { type: "home_set", tier } };
     }
     case "journal_add": {
       const entry = text(row.text ?? row.name, source === "ai" ? 400 : 2000);

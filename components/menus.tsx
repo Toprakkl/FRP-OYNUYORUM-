@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { carryCapacity, carriedWeight } from "@/lib/applyCommands";
 import { formatWorldTime } from "@/lib/format";
+import { bondLabel } from "@/lib/veyraLife";
 import {
   ITEM_LABEL,
   ITEM_TYPES,
@@ -404,7 +405,7 @@ export function WorldMenu() {
         <button className={segment === "journal" ? "on" : ""} onClick={() => setSegment("journal")}>Günlük</button>
       </div>
       {segment === "npc" ? (
-        game.npcs.length === 0 ? <p className="empty-state">Henüz kimse yok.</p> : game.npcs.map((npc) => <NpcCard key={npc.id} name={npc.name} attitude={npc.attitude} status={npc.status} location={npc.location} notes={npc.notes} />)
+        game.npcs.length === 0 ? <p className="empty-state">Henüz kimse yok.</p> : game.npcs.map((npc) => <NpcCard key={npc.id} name={npc.name} attitude={npc.attitude} status={npc.status} location={npc.location} notes={npc.notes} bond={npc.bond ?? 0} veyra={game.settings.genre === "veyra"} />)
       ) : null}
       {segment === "place" ? (
         places.length === 0 ? <p className="empty-state">Kayıtlı mekan yok.</p> : places.map((entry) => (
@@ -458,7 +459,7 @@ export function WorldMenu() {
   );
 }
 
-function NpcCard({ name, attitude, status, location, notes }: { name: string; attitude: number; status: "alive" | "dead" | "missing"; location: string; notes: string }) {
+function NpcCard({ name, attitude, status, location, notes, bond = 0, veyra = false }: { name: string; attitude: number; status: "alive" | "dead" | "missing"; location: string; notes: string; bond?: number; veyra?: boolean }) {
   const label = attitude <= -40 ? "Düşman" : attitude < -10 ? "Soğuk" : attitude <= 10 ? "Nötr" : attitude < 40 ? "Sıcak" : "Sadık";
   const state = status === "alive" ? "Yaşıyor" : status === "dead" ? "Ölü" : "Kayıp";
   return (
@@ -469,6 +470,8 @@ function NpcCard({ name, attitude, status, location, notes }: { name: string; at
         <span className={`status-badge status-${status}`}>{state}</span>
         <p className="meta">{location || "Yeri belirsiz"} · {label}</p>
         <div className="bar attitude-bar"><span style={{ width: `${(attitude + 100) / 2}%` }} /></div>
+        {veyra ? <p className="meta">Bağ {bond} · {bondLabel(bond)}</p> : null}
+        {veyra ? <div className="bar"><span className="fill fill-xp" style={{ width: `${bond}%` }} /></div> : null}
         {notes ? <p>{notes}</p> : null}
       </div>
     </article>

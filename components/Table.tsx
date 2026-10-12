@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDice, modifier, rollD20 } from "@/lib/dice";
 import { formatWorldTime, xpThreshold } from "@/lib/format";
+import { seasonOf } from "@/lib/veyraLife";
 import { STAT_KEYS, STAT_LABEL, STAT_SHORT, type DiceResolved, type TabId } from "@/lib/types";
 import { useGame } from "./GameApp";
 import { Panel } from "./Panels";
@@ -148,7 +149,7 @@ export function Table() {
         </div>
         <div className="hud-meta">
           <span>XP {character.xp}/{xpThreshold(character.level)}</span>
-          <span>{game.settings.genre === "veyra" ? `YT 1247 · ${formatWorldTime(game.worldTime)}` : formatWorldTime(game.worldTime)}</span>
+          <span>{game.settings.genre === "veyra" ? `YT ${seasonOf(game.worldTime).year} · ${seasonOf(game.worldTime).season} · ${formatWorldTime(game.worldTime)}` : formatWorldTime(game.worldTime)}</span>
         </div>
         <div className="ability-row">
           {STAT_KEYS.map((key) => {
@@ -179,6 +180,8 @@ export function Table() {
         </div>
         {more ? (
           <div className="more-menu">
+            {game.settings.genre === "veyra" ? <button className="tab" onClick={() => { setMore(false); setTab("profession"); }}>Meslek</button> : null}
+            {game.settings.genre === "veyra" ? <button className="tab" onClick={() => { setMore(false); setTab("kingdom"); }}>Krallık</button> : null}
             <button className="tab" onClick={() => { setMore(false); setTab("log"); }}>Günlük</button>
             <button className="tab" onClick={() => { setMore(false); setTab("settings"); }}>Ayarlar</button>
             <button className="tab" onClick={() => { setMore(false); setScreen("home"); }}>Masalar</button>

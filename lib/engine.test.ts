@@ -5,11 +5,12 @@ import { acceptCommands, sanitizeCommand } from "./commands";
 import { createGame } from "./createGame";
 import { resolveDice } from "./dice";
 import { playLocalTurn } from "./fallback";
-import { undoGame } from "./history";
+import { takeSnap, undoGame } from "./history";
 import { selectLore } from "./lore";
 import { readAiPayload } from "./modelJson";
 import type { Game } from "./types";
 import { pointCost, pointSpent, withSkillBonus } from "./veyra";
+import { getScenario, kingdomNet, professionWeek } from "./veyraLife";
 
 function game(): Game {
   return createGame({
@@ -246,6 +247,100 @@ describe("Veyra", () => {
     assert.equal(stood.game.character.lastStand, false);
     const dead = applyCommands(stood.game, [{ type: "hp", delta: -10 }], "ai");
     assert.equal(dead.game.character.isAlive, false);
+    born.character.fatigue = 1;
+    const tired = withSkillBonus(
+      { natural: 10, stat: "dex", modifier: 0, total: 10, dc: 12, reason: "Gizlenme" },
+      born,
+      "Gizlilik",
+    );
+    assert.equal(tired.modifier, 1);
+    assert.equal(tired.total, 11);
+  });
+
+  it("meslek haftası, yerleşim ve senaryo masaya oturur", () => {
+    const week = professionWeek(14, 2, 30, 1);
+    assert.equal(week.gold, 3);
+    assert.equal(week.mp, 1);
+    const sample = {
+      name: "Örnek",
+      tier: 4,
+      population: 10000,
+      treasury: 0,
+      army: 300,
+      people: 50,
+      stability: 50,
+      influence: 30,
+      legitimacy: 40,
+      buildings: ["Tapınak", "Kışla", "Surlar", "Kütüphane", "Demirhane", "Şifahane"],
+      advisors: [
+        { role: "Mareşal", name: "A", loyalty: 70 },
+        { role: "Elçi", name: "B", loyalty: 70 },
+        { role: "Başrahip", name: "C", loyalty: 70 },
+        { role: "Yargıç", name: "D", loyalty: 70 },
+      ],
+      boons: [],
+      pendingEvent: 0,
+    };
+    const net = kingdomNet(sample);
+    assert.equal(net.income, 2000);
+    assert.equal(net.expense, 560);
+    assert.equal(net.net, 1440);
+    assert.equal(getScenario("lonca"), undefined);
+
+    const born = createGame({
+      genre: "veyra",
+      customGenre: "",
+      theme: "veyra",
+      classId: "savasci",
+      name: "Dara",
+      race: "İnsan",
+      age: 24,
+      concept: "",
+      difficulty: "normal",
+      magic: true,
+      tone: "normal",
+      originId: "sinir-koyu",
+    });
+    assert.equal(born.character.profession?.name, "Çiftçi");
+    assert.equal(born.kingdom?.tier, 2);
+    assert.equal(born.kingdom?.name, "Eşikköy");
+    assert.equal(born.npcs[0]?.bond, 15);
+    assert.equal(sanitizeCommand({ type: "season_advance", event: 1 }, "ai", born.settings).ok, false);
+    const people = born.kingdom?.people ?? 0;
+    const season = applyCommands(born, [{ type: "season_advance", event: 1 }], "manual");
+    assert.equal(season.game.kingdom?.pendingEvent, 1);
+    assert.equal(season.game.kingdom?.people, people);
+    assert.equal(season.game.worldTime, born.worldTime + 2160);
+    const choice = applyCommands(season.game, [{ type: "kingdom_choice", index: 0 }], "manual");
+    assert.equal(choice.game.kingdom?.pendingEvent, 0);
+    assert.equal(choice.game.kingdom?.people, people + 8);
+    const quiet = applyCommands(choice.game, [{ type: "season_advance", event: 10 }, { type: "kingdom_choice", index: 0 }], "manual");
+    assert.equal(quiet.game.kingdom?.pendingEvent, 0);
+
+    const lonca = createGame({
+      genre: "veyra",
+      customGenre: "",
+      theme: "veyra",
+      classId: "savasci",
+      name: "Aria",
+      race: "İnsan",
+      age: 24,
+      concept: "",
+      difficulty: "normal",
+      magic: true,
+      tone: "normal",
+      originId: "lonca",
+    });
+    const denied = applyCommands(lonca, [{ type: "season_advance", event: 4 }], "manual");
+    assert.equal(denied.game.kingdom, null);
+    assert.ok(denied.rejected.length > 0);
+    const rich = applyCommands(lonca, [{ type: "set_gold", value: 250 }], "manual");
+    const founded = applyCommands(rich.game, [{ type: "kingdom_found", name: "Eşik" }], "manual");
+    assert.equal(founded.game.kingdom?.tier, 1);
+    assert.equal(founded.game.character.gold, 50);
+    const undone = undoGame({ ...founded.game, history: [{ label: "kur", messageCount: 1, snap: takeSnap(rich.game) }] });
+    assert.equal(undone?.kingdom, null);
+    assert.equal(undone?.character.gold, 250);
   });
 });
 

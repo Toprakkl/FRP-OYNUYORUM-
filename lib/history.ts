@@ -14,6 +14,9 @@ export function takeSnap(game: Game): Snapshot {
     journal: structuredClone(game.journal),
     events: structuredClone(game.events),
     summary: game.summary,
+    kingdom: structuredClone(game.kingdom),
+    companions: structuredClone(game.companions),
+    weather: game.weather,
   };
 }
 
@@ -37,6 +40,9 @@ export function undoGame(game: Game): Game | null {
     journal: structuredClone(entry.snap.journal),
     events: structuredClone(entry.snap.events),
     summary: entry.snap.summary,
+    kingdom: entry.snap.kingdom !== undefined ? structuredClone(entry.snap.kingdom) : game.kingdom,
+    companions: entry.snap.companions ? structuredClone(entry.snap.companions) : game.companions,
+    weather: entry.snap.weather !== undefined ? entry.snap.weather : game.weather,
     messages: game.messages.slice(0, entry.messageCount),
     history: rest,
     updatedAt: now(),

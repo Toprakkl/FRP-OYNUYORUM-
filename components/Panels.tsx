@@ -17,6 +17,7 @@ import {
   type TabId,
 } from "@/lib/types";
 import { InventoryMenu, PaperDoll, QuestMenu, WorldMenu } from "./menus";
+import { KingdomPanel, ProfessionPanel } from "./VeyraLife";
 import { VeyraSheet } from "./VeyraSheet";
 import { useGame } from "./GameApp";
 import { compressImage } from "./imageFile";
@@ -29,7 +30,7 @@ const MODELS = [
 ];
 
 export function Panel({ tab, onClose, desktop, onJump }: { tab: TabId; onClose: () => void; desktop: boolean; onJump?: (tab: TabId) => void }) {
-  const title = tab === "character" ? "Karakter" : tab === "inventory" ? "Envanter" : tab === "quests" ? "Görevler" : tab === "world" ? "Dünya" : tab === "log" ? "Günlük" : "Ayarlar";
+  const title = tab === "character" ? "Karakter" : tab === "inventory" ? "Envanter" : tab === "quests" ? "Görevler" : tab === "world" ? "Dünya" : tab === "log" ? "Günlük" : tab === "profession" ? "Meslek" : tab === "kingdom" ? "Krallık" : "Ayarlar";
   return (
     <>
       <div className="sheet-handle" aria-hidden="true" />
@@ -42,6 +43,8 @@ export function Panel({ tab, onClose, desktop, onJump }: { tab: TabId; onClose: 
         {tab === "inventory" ? <InventoryMenu /> : null}
         {tab === "quests" ? <QuestMenu /> : null}
         {tab === "world" ? <WorldMenu /> : null}
+        {tab === "profession" ? <ProfessionPanel /> : null}
+        {tab === "kingdom" ? <KingdomPanel /> : null}
         {tab === "log" ? <LogPanel /> : null}
         {tab === "settings" ? <SettingsPanel /> : null}
       </div>

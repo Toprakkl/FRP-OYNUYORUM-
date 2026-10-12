@@ -5,6 +5,7 @@ import { getPack, PACKS } from "@/lib/campaigns";
 import { modifier, roll4d6DropLowest } from "@/lib/dice";
 import { STAT_KEYS, STAT_LABEL, STAT_SHORT, type GenreId, type StatKey, type Stats } from "@/lib/types";
 import { applyRace, essenceMax, PATHS, pointCost, pointSpent, RACES, SKILLS, type VeyraRace } from "@/lib/veyra";
+import { SCENARIOS } from "@/lib/veyraLife";
 import { useGame } from "./GameApp";
 
 const EIGHTS: Stats = { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 };
@@ -26,7 +27,7 @@ export function Wizard() {
   const [base, setBase] = useState<Stats>({ ...EIGHTS });
   const [boosts, setBoosts] = useState<StatKey[]>([]);
   const [bonusSkill, setBonusSkill] = useState("İkna");
-  const [originId, setOriginId] = useState("lonca");
+  const [originId, setOriginId] = useState("taht-gecesi");
   const [difficulty, setDifficulty] = useState<"kolay" | "normal" | "sert">("normal");
   const [magic, setMagic] = useState(pack.magicDefault);
   const [tone, setTone] = useState<"kisa" | "normal" | "detayli">("normal");
@@ -58,7 +59,7 @@ export function Wizard() {
     setMagic(chosen.id === "veyra" ? true : chosen.magicDefault);
     setRace(chosen.raceSuggestions[0] ?? "");
     setAge(chosen.id === "veyra" ? 24 : 30);
-    setOriginId("lonca");
+    setOriginId(next === "veyra" ? "taht-gecesi" : "lonca");
     setPreviewTheme(chosen.theme);
   }
 
@@ -109,23 +110,12 @@ export function Wizard() {
       ) : null}
       {step === 1 && veyra ? (
         <div className="stack">
-          <p className="meta">Başlangıç YT 1247'de kilitli. Gizemler yerinde kalır.</p>
+          <p className="meta">On üç başlangıç. Yıl YT 1247 kilitli. Gizemler yerinde kalır.</p>
           <div className="origin-grid">
-            {[
-              ["lonca", "Serbest Kanat acemisi", "Lormarin, ilk Bakır görev"],
-              ["valdrenia", "Valdrenia köylüsü", "Altın Ovalar, suskun çan"],
-              ["vaelmoor", "Ay Kulesi öğrencisi", "Vaelmoor, eksik sayfa"],
-              ["hrimgard", "Hrimgard savaşçısı", "Frostheim, kayıp izci"],
-              ["yesiloz", "Yeşilöz vatandaşı", "Kök Şehri, yeni ulus"],
-              ["nekrodur", "Nekrodur eşiği", "Mor-Sarkath, eksik ad"],
-              ["thalassar", "Thalassar denizcisi", "Port Argent, mühürlü sandık"],
-              ["samirat", "Samirat tüccarı", "Safiran, baharat mühürü"],
-              ["zul", "Zul'Karath sığlığı", "Yeraltı, yukarı çıkan kapı"],
-              ["akagane", "Akagane gezgini", "Doğudan gelen mektup"],
-            ].map(([id, title, pitch]) => (
-              <button key={id} data-testid={`origin-${id}`} className={`genre ${originId === id ? "on" : ""}`} onClick={() => setOriginId(id)}>
-                <strong>{title}</strong>
-                <span className="meta"> {pitch}</span>
+            {SCENARIOS.map((scenario) => (
+              <button key={scenario.id} data-testid={`origin-${scenario.id}`} className={`genre ${originId === scenario.id ? "on" : ""}`} onClick={() => setOriginId(scenario.id)}>
+                <strong>{scenario.name}</strong>
+                <span className="meta"> {scenario.pitch}</span>
               </button>
             ))}
           </div>

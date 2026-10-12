@@ -121,6 +121,31 @@ export type Item = {
 
 export type Skill = { name: string; level: number };
 
+export type Profession = { name: string; mp: number };
+
+export type Advisor = { role: string; name: string; loyalty: number };
+
+export const KINGDOM_STATS = ["treasury", "army", "people", "stability", "influence", "legitimacy", "population"] as const;
+export type KingdomStat = (typeof KINGDOM_STATS)[number];
+
+export type Kingdom = {
+  name: string;
+  tier: number;
+  population: number;
+  treasury: number;
+  army: number;
+  people: number;
+  stability: number;
+  influence: number;
+  legitimacy: number;
+  buildings: string[];
+  advisors: Advisor[];
+  boons: string[];
+  pendingEvent: number;
+};
+
+export type Companion = { id: string; name: string; loyalty: number; note: string };
+
 export type Character = {
   name: string;
   className: string;
@@ -156,6 +181,10 @@ export type Character = {
   traits: string;
   lastStand: boolean;
   naturalArmor: boolean;
+  profession: Profession | null;
+  sideProfession: Profession | null;
+  fatigue: number;
+  homeTier: number;
   portraitDataUrl?: string;
   isAlive: boolean;
 };
@@ -248,6 +277,7 @@ export type Npc = {
   status: NpcStatus;
   location: string;
   notes: string;
+  bond: number;
 };
 
 export type Quest = {
@@ -300,6 +330,9 @@ export type Snapshot = {
   journal: JournalEntry[];
   events: GameEvent[];
   summary: string;
+  kingdom?: Kingdom | null;
+  companions?: Companion[];
+  weather?: string;
 };
 
 export type HistoryEntry = {
@@ -325,8 +358,11 @@ export type Game = {
   events: GameEvent[];
   journal: JournalEntry[];
   history: HistoryEntry[];
+  kingdom: Kingdom | null;
+  companions: Companion[];
+  weather: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export type TabId = "character" | "inventory" | "quests" | "world" | "log" | "settings";
+export type TabId = "character" | "inventory" | "quests" | "world" | "log" | "settings" | "profession" | "kingdom";

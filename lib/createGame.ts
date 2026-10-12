@@ -5,6 +5,7 @@ import type { ItemSeed } from "./presets";
 import type { Character, Difficulty, Game, GenreId, Item, Stats, ThemeId, Tone } from "./types";
 import { computeAc } from "./applyCommands";
 import { blankVeyraSheet, essenceMax, getOrigin, pathById, raceByName } from "./veyra";
+import { emptyProfession, getScenario } from "./veyraLife";
 
 export type NewGameInput = {
   genre: GenreId;
@@ -66,7 +67,9 @@ export function createGame(input: NewGameInput): Game {
   const pack = getPack(input.genre);
   const preset = pack.classes.find((entry) => entry.id === input.classId) ?? pack.classes[0];
   const veyra = input.genre === "veyra";
-  const origin = veyra ? getOrigin(input.originId) : null;
+  const scenario = veyra ? getScenario(input.originId) : undefined;
+  const origin = veyra && !scenario ? getOrigin(input.originId) : null;
+  const hook = scenario ?? origin;
   const path = veyra ? pathById(input.classId) : null;
   const race = veyra ? raceByName(input.race) : undefined;
   const stats = input.stats ?? preset.stats;
@@ -78,7 +81,7 @@ export function createGame(input: NewGameInput): Game {
   const stamped = now();
   const worldLabel = input.genre === "ozel" && input.customGenre.trim() ? input.customGenre.trim() : pack.title;
   const className = path?.name ?? preset.name;
-  const openingCore = withRace((origin ?? pack).opening({ name, className }), input.race);
+  const openingCore = withRace((hook ?? pack).opening({ name, className }), input.race);
   const opening = input.genre === "ozel" && input.customGenre.trim() ? `Dünya: ${input.customGenre.trim()}.\n\n${openingCore}` : openingCore;
   const skills = (path?.skills ?? preset.skills).map((skill) => ({ ...skill }));
   const bonus = input.bonusSkill?.trim();
@@ -104,7 +107,7 @@ export function createGame(input: NewGameInput): Game {
     maxHp,
     mana: maxMana,
     maxMana,
-    gold: (path?.gold ?? preset.gold) + (origin?.gold ?? 0),
+    gold: (path?.gold ?? preset.gold) + (hook?.gold ?? 0),
     ac: 10,
     stats: { ...blankStats(), ...stats },
     statPoints: 0,
@@ -112,14 +115,18 @@ export function createGame(input: NewGameInput): Game {
     skills,
     spells: magic ? [...preset.spells] : [],
     notes: "",
-    reputation: { ...(origin?.reputation ?? {}) },
+    reputation: { ...(hook?.reputation ?? {}) },
     ...sheet,
     talentPoints: veyra ? 2 : 0,
-    guildRank: origin?.guildRank ?? "",
-    origin: origin?.id ?? "",
+    guildRank: hook?.guildRank ?? "",
+    origin: hook?.id ?? "",
     traits: race?.trait ?? "",
     lastStand: Boolean(race?.lastStand),
     naturalArmor: Boolean(race?.naturalArmor),
+    profession: scenario?.profession ? emptyProfession(scenario.profession) : null,
+    sideProfession: null,
+    fatigue: 0,
+    homeTier: scenario?.homeTier ?? 0,
     isAlive: true,
   };
 
@@ -127,8 +134,8 @@ export function createGame(input: NewGameInput): Game {
   const inventory = seeds
     .filter((item) => magic || !item.magical)
     .map((item) => materialize(item, magic));
-  if (origin?.guildRank) {
-    inventory.push(materialize({ name: "Lonca kartı", type: "quest", subtype: "kart", description: `${origin.guildRank} rütbe. Serbest Kanat.`, weight: 0, value: 0 }, true));
+  if (hook?.guildRank) {
+    inventory.push(materialize({ name: "Lonca kartı", type: "quest", subtype: "kart", description: `${hook.guildRank} rütbe. Serbest Kanat.`, weight: 0, value: 0 }, true));
   }
 
   const game: Game = {
@@ -149,48 +156,63 @@ export function createGame(input: NewGameInput): Game {
     },
     summary: "",
     summarizedMessageCount: 0,
-    worldTime: origin?.worldTime ?? pack.worldTime,
-    location: origin?.location ?? pack.location,
+    worldTime: hook?.worldTime ?? pack.worldTime,
+    location: hook?.location ?? pack.location,
     character,
     inventory,
     quests: [
       {
         id: uid(),
-        title: (origin ?? pack).quest.title,
-        description: (origin ?? pack).quest.description,
+        title: (hook ?? pack).quest.title,
+        description: (hook ?? pack).quest.description,
         status: "active",
-        objectives: (origin ?? pack).quest.objectives.map((text) => ({ text, done: false })),
-        reward: (origin ?? pack).quest.reward,
+        objectives: (hook ?? pack).quest.objectives.map((text) => ({ text, done: false })),
+        reward: (hook ?? pack).quest.reward,
       },
     ],
     lore: [
       ...pack.lore.map((entry) => ({ ...entry, id: uid(), tags: [...entry.tags] })),
-      ...(origin
+      ...(hook
         ? [{
             id: uid(),
             kind: "story" as const,
-            title: origin.name,
-            content: origin.lore,
-            tags: [origin.id, origin.location],
+            title: hook.name,
+            content: hook.lore,
+            tags: [hook.id, hook.location],
             visibility: "player_visible" as const,
             alwaysInclude: true,
+          }]
+        : []),
+      ...(veyra
+        ? [{
+            id: uid(),
+            kind: "rule" as const,
+            title: "Meslek ve yerleşim",
+            content: "Meslek haftası ve yönetim turu panodan yürür. İş zarı d20 artı beceri: 12 ve üzeri tam ücret, 8-11 yarım, 7 ve altı boş. Yerleşim kurmak 200 altın ve bir karakoldur. Sezon geliri ile olay kartı krallık panosundadır. Yoldaş en fazla üç kişidir. Bağ yalnız tanışılmış kişilerdedir. 1 altın 10 gümüş, 10 gümüş 100 bakırdır.",
+            tags: ["meslek", "yerleşim", "krallık", "yorgunluk"],
+            visibility: "player_visible" as const,
+            alwaysInclude: false,
           }]
         : []),
     ],
     npcs: [
       {
         id: uid(),
-        name: (origin ?? pack).npc.name,
-        attitude: (origin ?? pack).npc.attitude,
-        status: "alive",
-        location: (origin ?? pack).npc.location,
-        notes: (origin ?? pack).npc.notes,
+        name: (hook ?? pack).npc.name,
+        attitude: (hook ?? pack).npc.attitude,
+        status: "alive" as const,
+        location: (hook ?? pack).npc.location,
+        notes: (hook ?? pack).npc.notes,
+        bond: scenario?.npc.bond ?? 0,
       },
     ],
     messages: [{ id: uid(), role: "ai", content: opening, createdAt: stamped }],
     events: [{ id: uid(), source: "system", summary: "Macera açıldı", createdAt: stamped }],
     journal: [],
     history: [],
+    kingdom: scenario?.kingdom ? structuredClone(scenario.kingdom) : null,
+    companions: [],
+    weather: veyra ? "Açık" : "",
     createdAt: stamped,
     updatedAt: stamped,
   };

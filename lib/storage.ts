@@ -1,6 +1,8 @@
 import { computeAc } from "./applyCommands";
-import type { Game, GameSettings, GenreId, Stats, ThemeId } from "./types";
+import { clamp } from "./format";
+import type { Advisor, Companion, Game, GameSettings, GenreId, Kingdom, Npc, Profession, Stats, ThemeId } from "./types";
 import { STAT_KEYS } from "./types";
+import { WEATHERS } from "./veyraLife";
 
 export const SAVE_KEY = "frp-masasi-save-v1";
 export const PREFS_KEY = "frp-masasi-prefs-v1";
@@ -23,6 +25,72 @@ export const DEFAULT_PREFS: Prefs = {
 
 const GENRES: GenreId[] = ["veyra", "orta_cag", "istihbarat", "distopya", "bilimkurgu", "ozel"];
 const THEMES: ThemeId[] = ["veyra", "orta_cag", "istihbarat", "distopya", "bilimkurgu"];
+
+function professionOf(value: unknown): Profession | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<Profession>;
+  if (typeof row.name !== "string" || !row.name.trim()) return null;
+  return { name: row.name.slice(0, 40), mp: clamp(Math.round(Number(row.mp) || 0), 0, 9999) };
+}
+
+function kingdomOf(value: unknown): Kingdom | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<Kingdom>;
+  if (typeof row.name !== "string" || !row.name.trim()) return null;
+  const num = (input: unknown, min: number, max: number, fallback: number) => {
+    const n = Number(input);
+    if (!Number.isFinite(n)) return fallback;
+    return clamp(Math.round(n), min, max);
+  };
+  const advisors = Array.isArray(row.advisors)
+    ? row.advisors.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const advisor = entry as Partial<Advisor>;
+        if (typeof advisor.role !== "string" || typeof advisor.name !== "string") return [];
+        return [{ role: advisor.role.slice(0, 40), name: advisor.name.slice(0, 40), loyalty: num(advisor.loyalty, 0, 100, 70) }];
+      }).slice(0, 7)
+    : [];
+  return {
+    name: row.name.slice(0, 40),
+    tier: num(row.tier, 1, 7, 1),
+    population: num(row.population, 1, 5000000, 40),
+    treasury: num(row.treasury, 0, 5000000, 0),
+    army: num(row.army, 0, 5000000, 0),
+    people: num(row.people, 0, 100, 50),
+    stability: num(row.stability, 0, 100, 50),
+    influence: num(row.influence, 0, 100, 30),
+    legitimacy: num(row.legitimacy, 0, 100, 40),
+    buildings: Array.isArray(row.buildings) ? row.buildings.filter((entry): entry is string => typeof entry === "string").slice(0, 12) : [],
+    advisors,
+    boons: Array.isArray(row.boons) ? row.boons.filter((entry): entry is string => typeof entry === "string").slice(0, 8) : [],
+    pendingEvent: num(row.pendingEvent, 0, 20, 0),
+  };
+}
+
+function npcsOf(value: unknown): Npc[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const npc = entry as Npc;
+    if (typeof npc.name !== "string" || typeof npc.id !== "string") return [];
+    return [{ ...npc, bond: clamp(Math.round(Number(npc.bond) || 0), 0, 100) }];
+  });
+}
+
+function companionsOf(value: unknown): Companion[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const companion = entry as Partial<Companion>;
+    if (typeof companion.name !== "string" || !companion.name.trim()) return [];
+    return [{
+      id: typeof companion.id === "string" ? companion.id : crypto.randomUUID(),
+      name: companion.name.slice(0, 40),
+      loyalty: clamp(Math.round(Number(companion.loyalty) || 0), 0, 100),
+      note: typeof companion.note === "string" ? companion.note.slice(0, 160) : "",
+    }];
+  }).slice(0, 3);
+}
 
 function statsOf(value: unknown): Stats {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -77,9 +145,14 @@ export function coerceGame(input: unknown): Game | null {
     traits: typeof row.character.traits === "string" ? row.character.traits : "",
     lastStand: Boolean(row.character.lastStand),
     naturalArmor: Boolean(row.character.naturalArmor),
+    profession: professionOf(row.character.profession),
+    sideProfession: professionOf(row.character.sideProfession),
+    fatigue: clamp(Math.round(Number(row.character.fatigue) || 0), 0, 5),
+    homeTier: clamp(Math.round(Number(row.character.homeTier) || 0), 0, 5),
     portraitDataUrl: row.character.portraitDataUrl,
     isAlive: row.character.isAlive !== false,
   };
+  const weather = WEATHERS.find((entry) => entry === row.weather) ?? (genre === "veyra" ? "Açık" : "");
   const game: Game = {
     id: typeof row.id === "string" ? row.id : crypto.randomUUID(),
     title: typeof row.title === "string" ? row.title : character.name,
@@ -104,11 +177,14 @@ export function coerceGame(input: unknown): Game | null {
     inventory: Array.isArray(row.inventory) ? row.inventory : [],
     quests: Array.isArray(row.quests) ? row.quests : [],
     lore: Array.isArray(row.lore) ? row.lore : [],
-    npcs: Array.isArray(row.npcs) ? row.npcs : [],
+    npcs: npcsOf(row.npcs),
     messages: Array.isArray(row.messages) ? row.messages : [],
     events: Array.isArray(row.events) ? row.events : [],
     journal: Array.isArray(row.journal) ? row.journal : [],
     history: [],
+    kingdom: kingdomOf(row.kingdom),
+    companions: companionsOf(row.companions),
+    weather,
     createdAt: row.createdAt || new Date().toISOString(),
     updatedAt: row.updatedAt || new Date().toISOString(),
   };

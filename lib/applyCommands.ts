@@ -6,6 +6,7 @@ import { now, uid } from "./ids";
 import type { Character, Game, Item } from "./types";
 import { SLOTS } from "./types";
 import { essenceMax, findNode, levelCap, nextGuildRank, pathByName, raceByName, rankCap, statCap, unlockPlan } from "./veyra";
+import { ADVISOR_ROLES, BUILDINGS, HOME_COST, SEASON_EVENTS, TIERS, blankKingdom, kingdomNet, seasonDelta, tierRequirement } from "./veyraLife";
 
 export type ApplyResult = {
   game: Game;
@@ -24,6 +25,11 @@ function pushCondition(character: Character, name: string): boolean {
   if (character.conditions.length >= 12) return false;
   character.conditions.push(name);
   return true;
+}
+
+function veyraOnly(game: Game): string | null {
+  if (game.settings.genre !== "veyra") return "Bu masa Veyra değil";
+  return null;
 }
 
 function dropCondition(character: Character, name: string): boolean {
@@ -399,7 +405,7 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
       const created = !npc;
       if (!npc) {
         if (game.npcs.length >= 40) return { summaries: [], error: "Kişi listesi dolu" };
-        npc = { id: uid(), name: command.name, attitude: 0, status: "alive", location: game.location, notes: "" };
+        npc = { id: uid(), name: command.name, attitude: 0, status: "alive", location: game.location, notes: "", bond: 0 };
         game.npcs.push(npc);
       }
       const summaries: string[] = [];
@@ -459,6 +465,190 @@ function applyOne(game: Game, command: Command, source: Source): { summaries: st
       if (character.oath) return { summaries: [], error: "Yemin bir kez edilir" };
       character.oath = command.name;
       return { summaries: [`Yemin: ${command.name}`] };
+    }
+    case "profession_set": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!command.name) {
+        if (command.slot === "main") character.profession = null;
+        else character.sideProfession = null;
+        return { summaries: [command.slot === "main" ? "Ana meslek bırakıldı" : "Yan meslek bırakıldı"] };
+      }
+      if (command.slot === "side" && character.homeTier < 3) return { summaries: [], error: "Yan meslek için ev gerek" };
+      const other = command.slot === "main" ? character.sideProfession : character.profession;
+      if (other && sameName(other.name, command.name)) return { summaries: [], error: "Bu meslek diğer yuvada" };
+      const current = command.slot === "main" ? character.profession : character.sideProfession;
+      if (current && sameName(current.name, command.name)) return { summaries: [] };
+      const next = { name: command.name, mp: 0 };
+      if (command.slot === "main") character.profession = next;
+      else character.sideProfession = next;
+      return { summaries: [`Meslek: ${command.name}`] };
+    }
+    case "profession_mp": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      const job = command.slot === "main" ? character.profession : character.sideProfession;
+      if (!job) return { summaries: [], error: "Meslek yok" };
+      const before = job.mp;
+      job.mp = clamp(before + command.delta, 0, 9999);
+      if (job.mp === before) return { summaries: [] };
+      return { summaries: [`${job.name} puanı ${signed(job.mp - before)}`] };
+    }
+    case "season_advance": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Önce bir yerleşim kur" };
+      if (game.kingdom.pendingEvent) return { summaries: [], error: "Önce kararı ver" };
+      const net = kingdomNet(game.kingdom);
+      game.kingdom.treasury = Math.max(0, game.kingdom.treasury + net.net);
+      if (game.kingdom.treasury === 0 && net.net < 0) game.kingdom.stability = clamp(game.kingdom.stability - 5, 0, 100);
+      game.kingdom.pendingEvent = command.event;
+      game.worldTime += 2160;
+      const event = SEASON_EVENTS.find((entry) => entry.roll === command.event);
+      return { summaries: [`Sezon kapandı. Gelir ${net.income}, gider ${net.expense}.`, `Olay: ${event?.name ?? command.event}. Karar bekliyor.`] };
+    }
+    case "kingdom_choice": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Yerleşim yok" };
+      const event = SEASON_EVENTS.find((entry) => entry.roll === game.kingdom?.pendingEvent);
+      const choice = event?.choices[command.index];
+      if (!event || !choice) return { summaries: [], error: "Bekleyen karar yok" };
+      const kingdom = game.kingdom;
+      kingdom.people = clamp(seasonDelta(kingdom.people, choice.people, choice.note, "flat"), 0, 100);
+      kingdom.stability = clamp(seasonDelta(kingdom.stability, choice.stability, choice.note, "flat"), 0, 100);
+      kingdom.influence = clamp(seasonDelta(kingdom.influence, choice.influence, choice.note, "flat"), 0, 100);
+      kingdom.legitimacy = clamp(seasonDelta(kingdom.legitimacy, choice.legitimacy, choice.note, "flat"), 0, 100);
+      kingdom.treasury = Math.max(0, seasonDelta(kingdom.treasury, choice.treasury, choice.note, "treasury"));
+      kingdom.army = Math.max(0, seasonDelta(kingdom.army, choice.army, choice.note, "flat"));
+      kingdom.population = Math.max(1, seasonDelta(kingdom.population, choice.population, choice.note, "population"));
+      if (choice.boon && !kingdom.boons.includes(choice.boon)) kingdom.boons.push(choice.boon);
+      kingdom.pendingEvent = 0;
+      return { summaries: [`Karar: ${choice.label}`] };
+    }
+    case "kingdom_found": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (game.kingdom) return { summaries: [], error: "Yerleşimin zaten var" };
+      if (character.gold < 200) return { summaries: [], error: "200 altın gerek" };
+      character.gold -= 200;
+      game.kingdom = blankKingdom(command.name);
+      return { summaries: [`Yerleşim: ${command.name}`] };
+    }
+    case "kingdom_upgrade": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Yerleşim yok" };
+      const gate = tierRequirement(game.kingdom, character.level);
+      if (!gate) return { summaries: [], error: "Kademe dolu" };
+      if (!gate.ok) return { summaries: [], error: gate.reason };
+      game.kingdom.tier = gate.next;
+      return { summaries: [`Kademe: ${TIERS[gate.next] ?? gate.next}`] };
+    }
+    case "kingdom_stat": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Yerleşim yok" };
+      const kingdom = game.kingdom;
+      const before = kingdom[command.stat];
+      if (command.stat === "treasury" || command.stat === "army") kingdom[command.stat] = Math.max(0, before + command.delta);
+      else if (command.stat === "population") kingdom.population = Math.max(1, before + command.delta);
+      else kingdom[command.stat] = clamp(before + command.delta, 0, 100);
+      if (kingdom[command.stat] === before) return { summaries: [] };
+      return { summaries: [`Yerleşim ${signed(kingdom[command.stat] - before)}`] };
+    }
+    case "building_add": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Yerleşim yok" };
+      if (game.kingdom.buildings.includes(command.name)) return { summaries: [], error: "Bu bina duruyor" };
+      const def = BUILDINGS.find((building) => building.name === command.name);
+      if (!def) return { summaries: [], error: "Bina yok" };
+      if (game.kingdom.treasury < def.cost) return { summaries: [], error: "Hazine yetmiyor" };
+      game.kingdom.treasury -= def.cost;
+      game.kingdom.buildings.push(def.name);
+      if (def.name === "Tapınak") {
+        game.kingdom.people = clamp(game.kingdom.people + 5, 0, 100);
+        game.kingdom.legitimacy = clamp(game.kingdom.legitimacy + 2, 0, 100);
+      }
+      if (def.name === "Hapishane") game.kingdom.stability = clamp(game.kingdom.stability + 5, 0, 100);
+      return { summaries: [`Bina: ${def.name}`] };
+    }
+    case "advisor_set": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (!game.kingdom) return { summaries: [], error: "Yerleşim yok" };
+      const known = ADVISOR_ROLES.some((advisor) => advisor.role === command.role);
+      if (!known) return { summaries: [], error: "Rol yok" };
+      const existing = game.kingdom.advisors.find((advisor) => advisor.role === command.role);
+      if (existing) {
+        existing.name = command.name;
+        return { summaries: [`${command.role}: ${command.name}`] };
+      }
+      if (game.kingdom.advisors.length >= 7) return { summaries: [], error: "Danışman sırası dolu" };
+      game.kingdom.advisors.push({ role: command.role, name: command.name, loyalty: 70 });
+      return { summaries: [`Danışman: ${command.role}`] };
+    }
+    case "advisor_loyalty": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      const advisor = game.kingdom?.advisors.find((entry) => sameName(entry.role, command.who) || sameName(entry.name, command.who));
+      if (!advisor) return { summaries: [], error: "Danışman yok" };
+      const before = advisor.loyalty;
+      advisor.loyalty = clamp(before + command.delta, 0, 100);
+      if (advisor.loyalty === before) return { summaries: [] };
+      return { summaries: [`${advisor.role} ${signed(advisor.loyalty - before)}`] };
+    }
+    case "companion_touch": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      let companion = game.companions.find((entry) => sameName(entry.name, command.name));
+      if (!companion) {
+        if (game.companions.length >= 3) return { summaries: [], error: "Yoldaş sırası dolu" };
+        companion = { id: uid(), name: command.name, loyalty: clamp(50 + command.delta, 0, 100), note: command.note ?? "" };
+        game.companions.push(companion);
+        return { summaries: [`Yoldaş: ${companion.name}`] };
+      }
+      const before = companion.loyalty;
+      companion.loyalty = clamp(before + command.delta, 0, 100);
+      if (command.note) companion.note = command.note;
+      if (companion.loyalty === before) return { summaries: command.note ? [`${companion.name}`] : [] };
+      return { summaries: [`${companion.name} ${signed(companion.loyalty - before)}`] };
+    }
+    case "bond": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      const npc = game.npcs.find((entry) => sameName(entry.name, command.name));
+      if (!npc) return { summaries: [], error: "Bu kişi henüz yok" };
+      const before = npc.bond ?? 0;
+      npc.bond = clamp(before + command.delta, 0, 100);
+      if (npc.bond === before) return { summaries: [] };
+      return { summaries: [`Bağ ${npc.name} ${signed(npc.bond - before)}`] };
+    }
+    case "weather_set": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (game.weather === command.name) return { summaries: [] };
+      game.weather = command.name;
+      return { summaries: [`Hava: ${command.name}`] };
+    }
+    case "fatigue": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      const before = character.fatigue;
+      character.fatigue = clamp(before + command.delta, 0, 5);
+      if (character.fatigue === before) return { summaries: [] };
+      return { summaries: [`Yorgunluk ${signed(character.fatigue - before)}`] };
+    }
+    case "home_set": {
+      const blocked = veyraOnly(game);
+      if (blocked) return { summaries: [], error: blocked };
+      if (command.tier !== character.homeTier + 1) return { summaries: [], error: "Konut bir kademe yükselir" };
+      const cost = HOME_COST[command.tier] ?? 0;
+      if (character.gold < cost) return { summaries: [], error: `${cost} altın gerek` };
+      character.gold -= cost;
+      character.homeTier = command.tier;
+      return { summaries: [`Konut yükseldi`] };
     }
     case "journal_add": {
       game.journal.unshift({ id: uid(), content: command.text, createdAt: now() });

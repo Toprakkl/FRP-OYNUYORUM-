@@ -3,6 +3,7 @@ import { clip, formatWorldTime } from "./format";
 import { selectLore } from "./lore";
 import { GENRE_LABEL, SLOT_LABEL, STAT_LABEL, type DiceResolved, type Game } from "./types";
 import { honorTitle, veyraRules } from "./veyra";
+import { HOMES, TIERS, seasonOf } from "./veyraLife";
 
 function adultAllowed(game: Game): boolean {
   if (!game.settings.adult || !game.settings.adultConfirmed) return false;
@@ -104,6 +105,10 @@ export function buildUserPrompt(game: Game, message: string, dice: DiceResolved 
             yetenekler: character.talents,
             lonca: character.guildRank || "üye değil",
             loncaPuani: character.guildPoints,
+            meslek: character.profession ? `${character.profession.name} MP ${character.profession.mp}` : "yok",
+            yanMeslek: character.sideProfession ? `${character.sideProfession.name} MP ${character.sideProfession.mp}` : "yok",
+            yorgunluk: character.fatigue,
+            konut: HOMES[character.homeTier] || "yok",
           }
         : {}),
       para: `${character.gold} ${game.settings.currency}`,
@@ -117,12 +122,42 @@ export function buildUserPrompt(game: Game, message: string, dice: DiceResolved 
       gecmis: clip(character.backstory, 500),
       itibar: character.reputation,
     },
+    ...(game.settings.genre === "veyra"
+      ? {
+          mevsim: seasonOf(game.worldTime),
+          hava: game.weather || "Açık",
+          krallik: game.kingdom
+            ? {
+                ad: game.kingdom.name,
+                kademe: TIERS[game.kingdom.tier] ?? String(game.kingdom.tier),
+                nufus: game.kingdom.population,
+                hazine: game.kingdom.treasury,
+                ordu: game.kingdom.army,
+                halk: game.kingdom.people,
+                istikrar: game.kingdom.stability,
+                nufuz: game.kingdom.influence,
+                mesruiyet: game.kingdom.legitimacy,
+                binalar: game.kingdom.buildings,
+                danisman: game.kingdom.advisors.map((advisor) => `${advisor.role} ${advisor.name} ${advisor.loyalty}`),
+                bekleyen: game.kingdom.pendingEvent,
+              }
+            : "yok",
+          yoldaslar: game.companions.map((companion) => `${companion.name} ${companion.loyalty}`),
+        }
+      : {}),
     kusanim: game.inventory
       .filter((item) => item.equippedSlot)
       .map((item) => `${item.name} (${item.equippedSlot ? SLOT_LABEL[item.equippedSlot] : ""}${item.props.damage ? `, ${item.props.damage}` : ""}${item.props.ac ? `, AC +${item.props.ac}` : ""})`),
     envanter: game.inventory.map((item) => `${item.name} ×${item.qty}${item.magical ? " [büyülü]" : ""}`),
     gorevler: game.quests.filter((quest) => quest.status === "active"),
-    kisiler: game.npcs.map((npc) => ({ ad: npc.name, tutum: npc.attitude, durum: npc.status, yer: npc.location, not: clip(npc.notes, 180) })),
+    kisiler: game.npcs.map((npc) => ({
+      ad: npc.name,
+      tutum: npc.attitude,
+      durum: npc.status,
+      yer: npc.location,
+      not: clip(npc.notes, 180),
+      ...(game.settings.genre === "veyra" ? { bag: npc.bond ?? 0 } : {}),
+    })),
     ozet: game.summary || "(henüz yok)",
     dunya: selectLore(game, message),
     son: game.messages

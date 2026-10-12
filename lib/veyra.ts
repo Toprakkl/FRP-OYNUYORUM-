@@ -445,8 +445,10 @@ export function skillRankBonus(skills: { name: string; level: number }[], skill?
 export function withSkillBonus(dice: DiceResolved, game: Game, skill?: string): DiceResolved {
   if (game.settings.genre !== "veyra") return dice;
   const extra = skillRankBonus(game.character.skills, skill);
-  if (!extra) return dice;
-  return { ...dice, modifier: dice.modifier + extra, total: dice.total + extra };
+  const fatigue = clamp(game.character.fatigue || 0, 0, 5);
+  const delta = extra - fatigue;
+  if (!delta) return dice;
+  return { ...dice, modifier: dice.modifier + delta, total: dice.total + delta };
 }
 
 export function raceByName(name: string): VeyraRace | undefined {
@@ -824,5 +826,6 @@ export function veyraRules(dc: number): string {
     "Onur sözün sicilidir, grup itibarından ayrıdır. {\"type\":\"honor\",\"delta\":2} gibi yaz. Sıradan bir sahnede −15 ile +15. Kitaptaki büyük leke (masuma zarar −20, ihanet −25) bir kez ve ancak sahne gerçekten olduysa. Yemin bozulunca Yemin Lekesi durumu ekle.",
     "XP: D tehdit ya da küçük görev 20, temiz bir hikâye vuruşu en fazla 50. C ve üstü tehdidi seviye yetmiyorsa öldürtme. Lonca puanı {\"type\":\"guild_lp\",\"delta\":5}, bir turda en fazla 20.",
     "Öz harcaması mana komutudur. Kademe maliyetleri 2, 4, 8, 14, 25. Öz bitince yorgunluk yaz ve sonraki büyü için dayanıklılık zarı iste. Hasar ayrı zar değildir. Irk özelliğini (karanlık görüş, zehir direnci, nefes, şans) yok sayma.",
+    "Meslek haftası ve yönetim turu arayüzden yürür. Onları tekrar atma, geliri ve sezon olayını ikinci kez yazma. Senaryo hedefini tek oturumda bitirme. Yoldaş en fazla 3. Bağ 0–100 yalnız tanışılmış kişiye, {\"type\":\"bond\",\"name\":\"ad\",\"delta\":5}. Krallık komutu yalnız yerleşim varken. Mevsim ve hava durumdadır; her tur hava zarı atma. Kışın kuzey yolu yavaş, yazın çöl yorar. Fiyatlar: sıcak yemek 3 bakır, han 5 bakır, kılıç 15 altın, şifa iksiri 25 altın, at 75 altın. 1 altın = 10 gümüş = 100 bakır. Yorgunluk yalnız uzun yol, açlık veya meslek haftasında; her puan zara −1, kod ekler. Can sıfır masanın mevcut kuralıdır.",
   ].join("\n");
 }
