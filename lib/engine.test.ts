@@ -7,6 +7,7 @@ import { resolveDice } from "./dice";
 import { playLocalTurn } from "./fallback";
 import { takeSnap, undoGame } from "./history";
 import { selectLore } from "./lore";
+import { humanizeGeminiError } from "./gemini";
 import { readAiPayload } from "./modelJson";
 import type { Game } from "./types";
 import { pointCost, pointSpent, withSkillBonus } from "./veyra";
@@ -365,6 +366,12 @@ describe("hakem metni", () => {
     assert.equal(turn.dice?.reason, "Gizlenme");
     assert.ok(turn.dice && turn.dice.total >= turn.dice.dc);
     assert.doesNotMatch(turn.narrative, /Zar atmadan/);
+  });
+
+  it("yoğun Gemini anahtarı bozuk göstermez", () => {
+    const text = humanizeGeminiError(new Error('{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}'));
+    assert.match(text, /Anahtarın duruyor/);
+    assert.doesNotMatch(text, /503/);
   });
 
   it("dinlenmek zar istemez, zar isteği anlatısız okunur", () => {

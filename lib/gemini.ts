@@ -52,11 +52,19 @@ const SCHEMA = {
   required: ["narrative", "commands"],
 };
 
+export function isGeminiBusy(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  return /503|UNAVAILABLE|high demand|overloaded|GEMINI_BUSY/i.test(raw);
+}
+
 export function humanizeGeminiError(err: unknown, apiKey = ""): string {
   const raw = err instanceof Error ? err.message : "Bilinmeyen hata";
   const msg = apiKey ? raw.split(apiKey).join("***") : raw;
   if (/API key|API_KEY_INVALID|401|403|permission|unauthenticated/i.test(msg)) {
     return "API anahtarı kabul edilmedi. Google AI Studio anahtarını kontrol et. Gemini sohbet aboneliği bu anahtarın yerine geçmez.";
+  }
+  if (isGeminiBusy(err)) {
+    return "Gemini şu an yoğun. Anahtarın duruyor. Biraz sonra yine dene; bu turu yerel anlatıcı yazar.";
   }
   if (/not found|404|was not found|invalid model/i.test(msg)) {
     return "Model bulunamadı. Ayarlardan gemini-3.8-flash seç.";
@@ -120,6 +128,7 @@ export async function askGameMaster(options: {
   let hint = "";
   let withSchema = true;
   let withThinking = true;
+  let retriedBusy = false;
   let lastError = "Hakem JSON döndürmedi";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -158,6 +167,14 @@ export async function askGameMaster(options: {
         lastError = message;
         hint = "\n\nÖnceki çıktın geçersizdi. Yalnızca {\"narrative\":\"...\",\"commands\":[],\"check_stat\":\"\",\"check_dc\":0,\"check_reason\":\"\",\"check_skill\":\"\"} biçiminde JSON döndür.";
         continue;
+      }
+      if (isGeminiBusy(err)) {
+        if (!retriedBusy && attempt < 2) {
+          retriedBusy = true;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          continue;
+        }
+        throw err;
       }
       throw err;
     }

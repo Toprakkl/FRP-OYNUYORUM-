@@ -1,7 +1,7 @@
 import { acceptCommands } from "@/lib/commands";
 import { resolveDice, rollD20 } from "@/lib/dice";
 import { fallbackTurn, playLocalTurn } from "@/lib/fallback";
-import { askGameMaster, humanizeGeminiError } from "@/lib/gemini";
+import { askGameMaster, humanizeGeminiError, isGeminiBusy } from "@/lib/gemini";
 import { cleanModel, coerceGame } from "@/lib/storage";
 import type { Game } from "@/lib/types";
 import { raceByName, withSkillBonus } from "@/lib/veyra";
@@ -74,10 +74,25 @@ export async function POST(request: Request) {
         rejected: accepted.rejected,
         dice,
         narrator: "yerel",
-        warning: "Zar atıldı. Hakem sonucu yazamadı, sahneyi yerel anlatıcı bağladı.",
+        warning: isGeminiBusy(err)
+          ? "Gemini şu an yoğun. Anahtarın duruyor. Zar duruyor, sahneyi yerel anlatıcı bağladı."
+          : "Zar atıldı. Hakem sonucu yazamadı, sahneyi yerel anlatıcı bağladı.",
       });
     }
   } catch (err) {
+    if (isGeminiBusy(err)) {
+      console.error("gemini busy", humanizeGeminiError(err, apiKey));
+      const local = playLocalTurn(game, parsed.data.message);
+      const accepted = acceptCommands(local.commands, "ai", game.settings, 6);
+      return Response.json({
+        narrative: local.narrative,
+        commands: accepted.commands,
+        rejected: accepted.rejected,
+        dice: local.dice,
+        narrator: "yerel",
+        warning: "Gemini şu an yoğun. Anahtarın duruyor. Bu turu yerel anlatıcı yazdı.",
+      });
+    }
     console.error("turn failed", humanizeGeminiError(err, apiKey));
     return Response.json({ error: humanizeGeminiError(err, apiKey) }, { status: 502 });
   }
