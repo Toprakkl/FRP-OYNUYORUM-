@@ -249,7 +249,8 @@ function SettingsPanel() {
             body: JSON.stringify({ apiKey: prefs.apiKey, model: prefs.model, test: true }),
           });
           const data = (await response.json()) as { ok?: boolean; busy?: boolean; error?: string };
-          setPing(data.ok ? (data.busy ? "Anahtar duruyor. Seçili model şu an yoğun. Biraz sonra yine dene ya da listeden başka model seç." : "Anahtar çalışıyor.") : data.error || "Olmadı");
+          const local = prefs.narrator === "yerel";
+          setPing(data.ok ? (data.busy ? "Anahtar duruyor. Seçili model şu an yoğun. Biraz sonra yine dene ya da listeden başka model seç." : local ? "Anahtar çalışıyor. Turlar hâlâ yerel anlatıcıda. Gemini düğmesine bas." : "Anahtar çalışıyor. Turları Gemini yazar.") : data.error || "Olmadı");
         }}>Anahtarı dene</button>
       </div>
       {ping ? <p>{ping}</p> : null}
@@ -269,6 +270,7 @@ function SettingsPanel() {
         <button className={`chip ${prefs.narrator === "yerel" ? "on" : ""}`} onClick={() => setPrefs({ narrator: "yerel" })}>Yerel anlatıcı</button>
         <button className={`chip ${prefs.sound ? "on" : ""}`} onClick={() => setPrefs({ sound: !prefs.sound })}>{prefs.sound ? "Zar sesi açık" : "Zar sesi kapalı"}</button>
       </div>
+      {prefs.narrator === "yerel" && (prefs.apiKey || serverKey) ? <p className="faint">Yerel anlatıcı seçili. Anahtar duruyor ama sahneleri o yazmıyor. Gemini düğmesine bas.</p> : null}
       <label className="field">
         Tür
         <select value={game.settings.genre} onChange={(event) => setSettings({ genre: event.target.value as typeof game.settings.genre })}>

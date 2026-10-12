@@ -22,6 +22,7 @@ type TurnPayload = {
   rejected?: string[];
   dice?: DiceResolved | null;
   warning?: string;
+  narrator?: "gemini" | "yerel";
 };
 
 type Api = {
@@ -349,7 +350,7 @@ function commitTurn(current: Game, text: string, data: TurnPayload): Game {
   const messages: ChatMessage[] = [
     ...current.messages,
     { id: uid(), role: "player", content: text, dice: data.dice, createdAt: stamped },
-    { id: uid(), role: "ai", content: data.narrative, effects: applied.summaries, createdAt: stamped },
+    { id: uid(), role: "ai", content: data.narrative, effects: applied.summaries, narrator: data.narrator, createdAt: stamped },
   ];
   if (data.warning) messages.push({ id: uid(), role: "system", content: data.warning, createdAt: stamped });
   if (rejected.length) messages.push({ id: uid(), role: "system", content: `Uygulanmadı: ${rejected.join(" · ")}`, createdAt: stamped });

@@ -199,7 +199,7 @@ export function Table() {
         <div className="feed" ref={feedRef} data-testid="story">
           {game.messages.map((message) => (
             <article key={message.id} className={`bubble bubble-${message.role}`}>
-              {message.role !== "system" ? <span className="kicker">{message.role === "ai" ? "Oyun yöneticisi" : character.name}</span> : null}
+              {message.role !== "system" ? <span className="kicker">{message.role === "ai" ? (message.narrator === "yerel" ? "Yerel anlatıcı" : "Oyun yöneticisi") : character.name}</span> : null}
               {message.content}
               {message.dice ? <div className="dice-line">{formatDice(message.dice)}</div> : null}
               {message.effects?.length ? <div className="effects">{message.effects.map((effect) => <span key={effect}>{effect}</span>)}</div> : null}

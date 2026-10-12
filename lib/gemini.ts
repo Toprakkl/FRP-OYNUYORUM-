@@ -114,6 +114,8 @@ async function generate(apiKey: string, model: string, system: string, user: str
   return ai.models.generateContent({ model, contents: user, config });
 }
 
+const BUSY_FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
+
 export async function askGameMaster(options: {
   apiKey: string;
   model: string;
@@ -121,6 +123,7 @@ export async function askGameMaster(options: {
   message: string;
   dice: DiceResolved | null;
   allowCheck?: boolean;
+  retryBusy?: boolean;
 }): Promise<{ narrative: string; commands: unknown[]; blocked: boolean; check: CheckRequest | null }> {
   const allowCheck = options.allowCheck !== false && !options.dice;
   const system = buildSystemPrompt(options.game);
@@ -169,7 +172,7 @@ export async function askGameMaster(options: {
         continue;
       }
       if (isGeminiBusy(err)) {
-        if (!retriedBusy && attempt < 2) {
+        if (options.retryBusy !== false && !retriedBusy && attempt < 2) {
           retriedBusy = true;
           await new Promise((resolve) => setTimeout(resolve, 1200));
           continue;
@@ -180,6 +183,28 @@ export async function askGameMaster(options: {
     }
   }
   throw new Error(lastError);
+}
+
+export async function askGameMasterChain(options: {
+  apiKey: string;
+  model: string;
+  game: Game;
+  message: string;
+  dice: DiceResolved | null;
+  allowCheck?: boolean;
+}): Promise<{ narrative: string; commands: unknown[]; blocked: boolean; check: CheckRequest | null; modelUsed: string }> {
+  const models = [options.model, ...BUSY_FALLBACKS.filter((model) => model !== options.model)];
+  let last: unknown;
+  for (let index = 0; index < models.length; index += 1) {
+    try {
+      const result = await askGameMaster({ ...options, model: models[index], retryBusy: index === 0 });
+      return { ...result, modelUsed: models[index] };
+    } catch (err) {
+      last = err;
+      if (!isGeminiBusy(err)) throw err;
+    }
+  }
+  throw last instanceof Error ? last : new Error("GEMINI_BUSY");
 }
 
 export async function askSummary(apiKey: string, model: string, previous: string, recent: string): Promise<string> {

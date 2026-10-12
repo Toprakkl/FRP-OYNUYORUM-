@@ -1,7 +1,7 @@
 import { acceptCommands } from "@/lib/commands";
 import { resolveDice, rollD20 } from "@/lib/dice";
 import { fallbackTurn, playLocalTurn } from "@/lib/fallback";
-import { askGameMaster, humanizeGeminiError, isGeminiBusy } from "@/lib/gemini";
+import { askGameMasterChain, humanizeGeminiError, isGeminiBusy } from "@/lib/gemini";
 import { cleanModel, coerceGame } from "@/lib/storage";
 import type { Game } from "@/lib/types";
 import { raceByName, withSkillBonus } from "@/lib/veyra";
@@ -37,7 +37,8 @@ export async function POST(request: Request) {
   if (wantLocal) return Response.json(localPayload(game, parsed.data.message, parsed.data.narrator === "gemini" && !apiKey));
 
   try {
-    const first = await askGameMaster({ apiKey, model, game, message: parsed.data.message, dice: null, allowCheck: true });
+    const first = await askGameMasterChain({ apiKey, model, game, message: parsed.data.message, dice: null, allowCheck: true });
+    const shifted = first.modelUsed !== model ? `${model} yoğundu. Bu turu ${first.modelUsed} yazdı.` : undefined;
     if (first.blocked || !first.check) {
       const accepted = acceptCommands(first.commands, "ai", game.settings, 6);
       return Response.json({
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
         dice: null,
         narrator: "gemini",
         blocked: first.blocked,
+        warning: shifted,
       });
     }
     let natural = rollD20();
@@ -54,8 +56,9 @@ export async function POST(request: Request) {
     const dice = withSkillBonus(resolveDice(natural, first.check.stat, game.character.stats, game.settings.difficulty, first.check.dc), game, first.check.skill);
     dice.reason = first.check.reason;
     try {
-      const second = await askGameMaster({ apiKey, model, game, message: parsed.data.message, dice, allowCheck: false });
+      const second = await askGameMasterChain({ apiKey, model: first.modelUsed, game, message: parsed.data.message, dice, allowCheck: false });
       const accepted = acceptCommands(second.commands, "ai", game.settings, 6);
+      const secondShift = second.modelUsed !== model ? `${model} yoğundu. Bu turu ${second.modelUsed} yazdı.` : shifted;
       return Response.json({
         narrative: second.narrative || fallbackTurn(game, parsed.data.message, dice).narrative,
         commands: accepted.commands,
@@ -63,6 +66,7 @@ export async function POST(request: Request) {
         dice,
         narrator: "gemini",
         blocked: second.blocked,
+        warning: secondShift,
       });
     } catch (err) {
       console.error("resolve failed", humanizeGeminiError(err, apiKey));

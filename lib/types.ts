@@ -310,6 +310,7 @@ export type ChatMessage = {
   content: string;
   dice?: DiceResolved | null;
   effects?: string[];
+  narrator?: "gemini" | "yerel";
   createdAt: string;
 };
 
