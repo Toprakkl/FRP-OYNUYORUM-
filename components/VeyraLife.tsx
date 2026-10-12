@@ -64,6 +64,7 @@ export function ProfessionPanel() {
       </label>
       <JobLine slot="main" />
       <button data-testid="work-week" disabled={!character.profession} onClick={() => work("main")}>İşe git</button>
+      {report ? <p data-testid="week-report">{report}</p> : null}
       <label className="field">
         Yan meslek
         <select value={character.sideProfession?.name ?? ""} disabled={character.homeTier < 3} onChange={(event) => commands([{ type: "profession_set", slot: "side", name: event.target.value }], "Yan meslek")}>
@@ -73,7 +74,6 @@ export function ProfessionPanel() {
       </label>
       {character.homeTier < 3 ? <p className="faint">Yan meslek için ev kademesi gerek.</p> : <JobLine slot="side" />}
       {character.sideProfession ? <button onClick={() => work("side")}>Yan işe git</button> : null}
-      {report ? <p data-testid="week-report">{report}</p> : null}
       <div className="section">
         <h3>Konut</h3>
         <p className="meta">{homeName} · Yorgunluk {character.fatigue}/5</p>
@@ -179,7 +179,7 @@ export function KingdomPanel() {
       )}
       {gate ? (
         <button disabled={!gate.ok} onClick={() => commands([{ type: "kingdom_upgrade" }], "Kademe")}>
-          {TIERS[gate.next]} {gate.ok ? "açık" : `· ${gate.reason}`}
+          {gate.ok ? `${TIERS[gate.next]} açık` : gate.reason}
         </button>
       ) : null}
       <div className="section">
