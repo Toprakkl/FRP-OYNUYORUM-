@@ -248,8 +248,8 @@ function SettingsPanel() {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ apiKey: prefs.apiKey, model: prefs.model, test: true }),
           });
-          const data = (await response.json()) as { ok?: boolean; error?: string };
-          setPing(data.ok ? "Anahtar çalışıyor." : data.error || "Olmadı");
+          const data = (await response.json()) as { ok?: boolean; busy?: boolean; error?: string };
+          setPing(data.ok ? (data.busy ? "Anahtar duruyor. Seçili model şu an yoğun. Biraz sonra yine dene ya da listeden başka model seç." : "Anahtar çalışıyor.") : data.error || "Olmadı");
         }}>Anahtarı dene</button>
       </div>
       {ping ? <p>{ping}</p> : null}

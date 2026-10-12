@@ -10,8 +10,8 @@ export async function POST(request: Request) {
   if (!body.test) return Response.json({ hasEnvKey: envKey, ready: Boolean(apiKey) });
   if (!apiKey) return Response.json({ ok: false, error: "Anahtar yok. AI Studio'dan bir anahtar alıp buraya yapıştır." }, { status: 400 });
   try {
-    await pingModel(apiKey, cleanModel(body.model || process.env.GEMINI_MODEL));
-    return Response.json({ ok: true, hasEnvKey: envKey });
+    const result = await pingModel(apiKey, cleanModel(body.model || process.env.GEMINI_MODEL));
+    return Response.json({ ok: true, busy: result === "busy", hasEnvKey: envKey });
   } catch (err) {
     return Response.json({ ok: false, error: humanizeGeminiError(err, apiKey) }, { status: 400 });
   }

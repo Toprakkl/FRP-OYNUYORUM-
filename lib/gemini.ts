@@ -192,7 +192,7 @@ export async function askSummary(apiKey: string, model: string, previous: string
   return (response.text ?? "").trim().slice(0, 2500);
 }
 
-export async function pingModel(apiKey: string, model: string): Promise<void> {
+async function pingOnce(apiKey: string, model: string): Promise<void> {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model,
@@ -200,4 +200,33 @@ export async function pingModel(apiKey: string, model: string): Promise<void> {
     config: { temperature: 0, maxOutputTokens: 32 },
   });
   if (!response.text?.trim()) throw new Error("Model boş döndü");
+}
+
+export async function pingModel(apiKey: string, model: string): Promise<"ok" | "busy"> {
+  const ask = async (name: string) => {
+    try {
+      await pingOnce(apiKey, name);
+    } catch (err) {
+      if (!isGeminiBusy(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await pingOnce(apiKey, name);
+    }
+  };
+  try {
+    await ask(model);
+    return "ok";
+  } catch (err) {
+    if (!isGeminiBusy(err)) throw err;
+    const probe = model === "gemini-3.5-flash-lite" ? "" : "gemini-3.5-flash-lite";
+    if (!probe) return "busy";
+    try {
+      await pingOnce(apiKey, probe);
+      return "busy";
+    } catch (other) {
+      if (isGeminiBusy(other)) return "busy";
+      const raw = other instanceof Error ? other.message : "";
+      if (/404|not found|invalid model/i.test(raw)) return "busy";
+      throw other;
+    }
+  }
 }
