@@ -268,6 +268,8 @@ a { color: var(--accent); }
 .panel-head, .section-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .panel-head h3, .section h3 { font-family: var(--font-display); margin: 0; }
 .panel-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px 14px 28px; display: flex; flex-direction: column; gap: 16px; }
+.settings-sheet { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.settings-sheet select { min-height: 44px; }
 .section { display: flex; flex-direction: column; gap: 8px; }
 .doll { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .slot { min-height: 58px; text-align: left; padding: 6px; font-size: 0.78rem; }

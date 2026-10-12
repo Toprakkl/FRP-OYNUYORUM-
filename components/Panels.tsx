@@ -233,7 +233,7 @@ function SettingsPanel() {
   if (!game) return null;
   const pack = getPack(game.settings.genre);
   return (
-    <>
+    <div className="settings-sheet">
       <BlurText label="Macera adı" value={game.title} onCommit={setTitle} />
       <label className="field">
         Gemini API anahtarı
@@ -254,10 +254,9 @@ function SettingsPanel() {
         }}>Anahtarı dene</button>
       </div>
       {ping ? <p>{ping}</p> : null}
-      <p className="faint">Gemini Pro sohbet üyeliği buraya bağlanmaz. Anahtar şurada: aistudio.google.com/apikey</p>
       <label className="field">
         Model
-        <select value={MODELS.some((entry) => entry[0] === prefs.model) ? prefs.model : "custom"} onChange={(event) => { if (event.target.value !== "custom") setPrefs({ model: event.target.value }); }}>
+        <select data-testid="model-select" value={MODELS.some((entry) => entry[0] === prefs.model) ? prefs.model : "custom"} onChange={(event) => { if (event.target.value !== "custom") setPrefs({ model: event.target.value }); }}>
           {MODELS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           <option value="custom">Başka</option>
         </select>
@@ -270,6 +269,7 @@ function SettingsPanel() {
         <button className={`chip ${prefs.narrator === "yerel" ? "on" : ""}`} onClick={() => setPrefs({ narrator: "yerel" })}>Yerel anlatıcı</button>
         <button className={`chip ${prefs.sound ? "on" : ""}`} onClick={() => setPrefs({ sound: !prefs.sound })}>{prefs.sound ? "Zar sesi açık" : "Zar sesi kapalı"}</button>
       </div>
+      <p className="faint">Sohbet üyeliği yetmez. Anahtar: aistudio.google.com/apikey</p>
       {prefs.narrator === "yerel" && (prefs.apiKey || serverKey) ? <p className="faint">Yerel anlatıcı seçili. Anahtar duruyor ama sahneleri o yazmıyor. Gemini düğmesine bas.</p> : null}
       <label className="field">
         Tür
@@ -316,7 +316,7 @@ function SettingsPanel() {
       <BlurText label="Para birimi" value={game.settings.currency || pack.currency} onCommit={(currency) => setSettings({ currency })} />
       <button onClick={() => exportGame(game.id)}>Macerayı indir</button>
       <p className="faint">Kayıt bu tarayıcıda durur. Telefonla bilgisayar arasında dosyayı taşı. Anahtar dosyaya yazılmaz.</p>
-    </>
+    </div>
   );
 }
 
